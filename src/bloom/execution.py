@@ -50,6 +50,38 @@ def ssh_arguments(target):
     return args + [target["host"]]
 
 
+def developer_read_paths():
+    """Read only the selected Apple toolchain, including a full Xcode bundle."""
+    try:
+        selected = subprocess.run(
+            ["/usr/bin/xcode-select", "--print-path"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            # Restricted children do not inherit DEVELOPER_DIR. Resolve the
+            # same system selection they will use, not the supervisor override.
+            env={"PATH": "/usr/bin:/bin"},
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ()
+    if selected.returncode:
+        return ()
+    path = Path(selected.stdout.strip())
+    if not path.is_absolute() or not path.is_dir():
+        return ()
+    if path == Path("/Library/Developer/CommandLineTools"):
+        return (path,)
+    if (
+        path.name == "Developer"
+        and path.parent.name == "Contents"
+        and path.parent.parent.suffix == ".app"
+    ):
+        # xcrun loads libraries from Developer and sibling framework folders.
+        # Grant this app only, never all of /Applications or another toolchain.
+        return (path.parent.parent,)
+    return ()
+
+
 def sandbox(mode: str, cwd: Path, network=False, extra_write=(), private_roots=(), extra_read=()):
     if mode == "full" and network:
         return []
@@ -79,6 +111,7 @@ def sandbox(mode: str, cwd: Path, network=False, extra_write=(), private_roots=(
         "/private/var/select",
         "/opt/homebrew",
         "/Library/Developer/CommandLineTools",
+        *developer_read_paths(),
         sys.prefix,
         sys.base_prefix,
         cwd,

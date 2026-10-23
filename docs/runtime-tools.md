@@ -22,6 +22,13 @@ Each child receives TMPDIR/TMP/TEMP and zsh's TMPPREFIX inside its existing
 per-process scratch grant. Here-documents work without broadening filesystem
 access. Existing remote SSH command behavior is unchanged.
 
+Restricted workers can read the Apple developer tools selected by
+`xcode-select`, including the selected Xcode app's libraries and frameworks.
+This covers both standalone Command Line Tools and full Xcode installations.
+Other applications stay outside the grant, and the toolchain remains read-only.
+Selection follows the system setting because restricted workers do not inherit
+the supervisor's `DEVELOPER_DIR` override.
+
 The managed executable is included in child/service PATH and granted read-only
 access to scoped workers. Target fields enumerate only configured locations
 that the agent may use; omitted targets select local execution. Target is not

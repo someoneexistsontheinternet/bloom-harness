@@ -2,16 +2,66 @@ import asyncio
 import hashlib
 import io
 import json
+import subprocess
 import tarfile
 
 import jsonschema
 import pytest
 
-from bloom import toolchain
+from bloom import execution, toolchain
 from bloom.runtime import Runtime
 from test_control_provenance import invoke
 from test_runtime_delivery import message
 from test_tools_processes import operation
+
+
+def test_selected_xcode_read_grant_preserves_sibling_and_write_denials(tmp_path, monkeypatch):
+    assigned = tmp_path / "assigned"
+    assigned.mkdir()
+    selected = tmp_path / "Applications" / "Xcode Test.app"
+    developer = selected / "Contents/Developer"
+    developer.mkdir(parents=True)
+    library = selected / "Contents/SharedFrameworks/library.txt"
+    library.parent.mkdir()
+    library.write_text("selected toolchain")
+    sibling = selected.parent / "Unrelated.app/private.txt"
+    sibling.parent.mkdir()
+    sibling.write_text("unrelated app")
+    monkeypatch.setenv("DEVELOPER_DIR", str(sibling.parent))
+
+    def selection(args, **kwargs):
+        assert args == ["/usr/bin/xcode-select", "--print-path"]
+        assert "DEVELOPER_DIR" not in kwargs["env"]
+        return subprocess.CompletedProcess(args, 0, str(developer) + "\n", "")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(execution.subprocess, "run", selection)
+        profile = execution.sandbox("read", assigned)
+
+    result = subprocess.run(profile + ["/bin/cat", str(library)], capture_output=True, text=True)
+    assert result.returncode == 0 and result.stdout == "selected toolchain", result.stderr
+    denied = subprocess.run(profile + ["/bin/cat", str(sibling)], capture_output=True)
+    assert denied.returncode != 0
+    write = subprocess.run(profile + ["/usr/bin/touch", str(library)], capture_output=True)
+    assert write.returncode != 0 and library.read_text() == "selected toolchain"
+
+
+@pytest.mark.parametrize("output", ["", ".", "/", "relative/Developer"])
+def test_invalid_developer_selection_does_not_expand_read_grants(monkeypatch, output):
+    monkeypatch.setattr(
+        execution.subprocess,
+        "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 0, output, ""),
+    )
+    assert execution.developer_read_paths() == ()
+
+
+def test_unavailable_developer_selection_keeps_existing_sandbox(monkeypatch):
+    def unavailable(args, **kwargs):
+        raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+
+    monkeypatch.setattr(execution.subprocess, "run", unavailable)
+    assert execution.developer_read_paths() == ()
 
 
 def test_dependency_package_checks_and_immutable_install(store, monkeypatch):
