@@ -1,0 +1,22 @@
+name: Bug report
+description: Report a reproducible problem without private runtime data
+body:
+  - type: input
+    id: revision
+    attributes:
+      label: Revision and environment
+      description: Commit/tag, macOS version, architecture and Python version.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Steps, expected behavior and actual result. Use synthetic or redacted inputs.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Relevant evidence
+      description: Small redacted error excerpts only. Do not attach credentials, databases, screenshots of private pages or whole conversation logs.

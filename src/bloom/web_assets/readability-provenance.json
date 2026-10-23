@@ -1,0 +1,16 @@
+{
+  "repository": "https://github.com/mozilla/readability",
+  "revision": "ab4027a8b37669745016869a37a504727992b2ba",
+  "files": {
+    "Readability.js": {
+      "url": "https://raw.githubusercontent.com/mozilla/readability/ab4027a8b37669745016869a37a504727992b2ba/Readability.js",
+      "sha256": "e9330028c8a5a4aa7d75147be2605d520f7f213c7b28474947dc0e9c984e9bed",
+      "bytes": 90944
+    },
+    "Readability-LICENSE.md": {
+      "url": "https://raw.githubusercontent.com/mozilla/readability/ab4027a8b37669745016869a37a504727992b2ba/LICENSE.md",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "bytes": 11358
+    }
+  }
+}

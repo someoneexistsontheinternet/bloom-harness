@@ -1,0 +1,24 @@
+# Optional browser inference route. Copy/merge into config/local.toml after
+# enabling a WebDriver session and inspecting the current page's selectors.
+# No cookies or login credentials belong in this file.
+[providers.chatgpt_browser]
+kind = "browser"
+auth = "none"
+base_url = "http://127.0.0.1:9451"
+browser_name = "safari"
+url = "https://chatgpt.com/"
+timeout_seconds = 1200
+
+# Populate these from the actual visible page. Empty values deliberately fail
+# capability validation instead of pretending an unverified route is ready.
+[providers.chatgpt_browser.selectors]
+prompt = ""
+submit = ""
+assistant = ""
+busy = ""
+model = ""
+effort = ""
+
+# Choose this route explicitly for a profile, and configure the model label you
+# can verify in the browser UI. This initial text route does not support images;
+# keep visual-CUA agents on the verified Responses route.

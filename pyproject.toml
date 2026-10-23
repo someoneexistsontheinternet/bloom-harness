@@ -1,0 +1,67 @@
+[project]
+name = "bloom-v3"
+version = "0.1.0"
+description = "A persistent personal agent with explicit records, context and effects"
+readme = "README.md"
+license = "MIT AND Apache-2.0"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "src/bloom/web_assets/Readability-LICENSE.md"]
+authors = [{name = "Bloom contributors"}]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3.12",
+]
+requires-python = ">=3.12"
+dependencies = ["httpx>=0.28,<1", "websockets>=15,<17", "jsonschema>=4.23,<5", "tiktoken>=0.9,<1"]
+
+[project.scripts]
+bloom = "bloom.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bloom"]
+ignore-vcs = true
+exclude = ["**/__pycache__", "**/*.pyc", "**/.env*"]
+
+[tool.hatch.build.targets.sdist]
+# Do not rely on VCS discovery: build from a populated workspace or an extracted
+# source release without ever collecting conversation data, logs or credentials.
+ignore-vcs = true
+only-include = [
+  "src/bloom", "tests", "prompts", "scripts", "docs", ".github",
+  "config/default.toml", "config/local.example.toml", "config/browser.example.toml",
+  "config/agent-presets", "README.md", "AGENTS.md", "CONTRIBUTING.md", "SECURITY.md",
+  "CHANGELOG.md", "THIRD_PARTY_NOTICES.md", "LICENSE", "pyproject.toml", "uv.lock",
+  ".gitignore", ".gitattributes", ".python-version",
+]
+exclude = [
+  "**/__pycache__", "**/*.pyc", "**/.env*", "/scripts/codex-misc",
+  "/docs/requirements", "/docs/reports", "/config/local.toml",
+]
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<10",
+    "pytest-asyncio>=0.25,<2",
+    "ruff==0.17.2",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["src/bloom/web_assets", "workspace", "artifacts", "logs", "worktrees"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]

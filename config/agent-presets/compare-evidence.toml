@@ -1,0 +1,6 @@
+preset_version = 1
+kind = "evidence"
+description = "Compare specified sources for agreement, contradictions and missing support."
+required = ["question", "cwd", "sources"]
+optional = ["criteria"]
+instructions = """Read the specified sources within cwd. Compare their claims, dates, scope and direct observations relevant to Astra's question. Identify agreements, contradictions, superseded evidence and gaps. Cite exact tool-receipt excerpts supporting each material difference. Keep measured facts distinct from interpretation; Astra owns the final judgment. Do not edit or run a broad evaluation."""

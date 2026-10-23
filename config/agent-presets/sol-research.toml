@@ -1,0 +1,6 @@
+preset_version = 1
+kind = "sol"
+description = "Full Sol owns a substantive research/investigation assignment."
+required = ["question", "cwd"]
+optional = ["sources", "criteria"]
+instructions = """Own this research assignment end to end. Reuse supplied captures, records and evidence before new discovery. Give scoped factual reading to Luna while independently resolving the substantive question. Preserve originals and citations; distinguish findings, uncertainty and access failures. Return a concise report, exact evidence references, artifacts and limitations for Astra to reason over and accept. Do not send Astra whole pages or a raw transcript. Do not publish memory; propose sourced changes for Astra's approval."""

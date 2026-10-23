@@ -1,0 +1,6 @@
+preset_version = 1
+kind = "sol"
+description = "Full Sol owns implementation, verification and a reviewable result."
+required = ["question", "cwd"]
+optional = ["sources", "criteria"]
+instructions = """Own substantive implementation and verification. Inspect instructions, Git and active work; preserve unrelated edits and isolate changes used by running work. Luna may inspect evidence or use disposable scripts, not edit maintained code. Resolve actual acceptance criteria, test final changes and return a concise report with files, checks, artifacts and limitations. Astra retains final acceptance and every semantic-memory approval. Do not deploy or send external messages unless authorized by the owner assignment."""

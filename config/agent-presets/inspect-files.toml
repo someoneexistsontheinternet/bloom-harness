@@ -1,0 +1,6 @@
+preset_version = 1
+kind = "evidence"
+description = "Inspect files or data inside one explicit directory."
+required = ["question", "cwd"]
+optional = ["sources", "criteria"]
+instructions = """Inspect the named source references first, then narrowly search within cwd for evidence answering the question. Stop once the stated criteria are met, or once a precise missing source/grant prevents them. If criteria are omitted, stop when the concrete question has a source-backed answer. Batch independent reads and bounded read-only commands. Return factual findings with exact tool-receipt quotes, paths and limitations promptly. Finding a supported API does not require auditing its implementation; finding an archive pointer does not require inventorying the whole archive. No implementation, extraction, deployment or changes."""

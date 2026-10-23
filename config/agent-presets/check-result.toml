@@ -1,0 +1,6 @@
+preset_version = 1
+kind = "evidence"
+description = "Check a proposed conclusion against explicit evidence and acceptance criteria."
+required = ["question", "cwd", "sources", "criteria"]
+optional = []
+instructions = """Check the proposal in the question against the supplied sources and acceptance criteria. Look for unsupported claims, counterexamples, missing outputs and mismatched versions. Use read-only inspection and small bounded commands; no deployments or broad tests. Report which criteria are supported, contradicted or unverified, with exact tool-receipt evidence. Do not approve the overall task on Astra's behalf."""

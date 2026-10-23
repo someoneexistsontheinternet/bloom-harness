@@ -1,0 +1,148 @@
+[runtime]
+max_agents = 4
+parallel_tools_per_agent = 16
+max_local_processes = 2
+mention_seconds = 90
+wait_seconds = 600
+max_wait_seconds = 86400
+worker_turns = 500
+recent_main_calls = 500
+recent_worker_calls = 500
+curation_threshold_chars = 50000
+handoff_tokens = 4000
+evidence_workers = 3
+evidence_turns = 20
+evidence_seconds = 300
+# A separate, non-renewing synthesis/correction window after exploration.
+worker_report_seconds = 120
+worker_report_effort = "medium"
+evidence_process_seconds = 20
+
+[providers.codex]
+kind = "responses"
+max_retries = 2
+retry_delay_seconds = 1
+base_url = "https://chatgpt.com/backend-api/codex"
+auth = "codex"
+auth_file = "~/.codex/auth.json"
+timeout_seconds = 1200
+stream = true
+max_output_supported = false
+
+[providers.openai]
+kind = "responses"
+max_retries = 2
+retry_delay_seconds = 1
+base_url = "https://api.openai.com/v1"
+auth = "env"
+key_env = "OPENAI_API_KEY"
+timeout_seconds = 1200
+stream = true
+max_output_supported = true
+
+[profiles.astra]
+provider = "openai"
+model = "configure-astra-model"
+effort = "max"
+compact_at = 400000
+compact_to = 100000
+context_limit = 1000000
+output_reserve = 32768
+mode = "full"
+
+[profiles.sol]
+provider = "openai"
+model = "configure-sol-model"
+effort = "xhigh"
+compact_at = 272000
+compact_to = 96000
+context_limit = 1000000
+output_reserve = 32768
+mode = "full"
+
+[profiles.luna]
+provider = "openai"
+model = "configure-luna-model"
+effort = "max"
+# Rebuild with a 256k budget and room to grow before the next compaction.
+compact_at = 512000
+compact_to = 256000
+context_limit = 1000000
+output_reserve = 32768
+mode = "read"
+
+[memory]
+semantic_upkeep_enabled = true
+maintenance_effort = "high"
+global_tokens = 8000
+topic_tokens = 1000
+enabled = true
+context_tokens = 100000
+idle_seconds = 1200
+batch_characters = 40000
+consolidation_tokens = 256000
+fragment_characters = 10000
+retrieval_events = 8
+retrieval_tokens = 24000
+state_tokens = 16000
+max_batches_per_pass = 4
+retrieval_enabled = true
+retrieval_turns = 4
+retrieval_seconds = 90
+retrieval_input_tokens = 256000
+
+[desktop]
+max_observation_age_seconds = 90
+
+[research]
+# Working evidence budgets, not model-context limits. Exact originals remain.
+result_tokens = 6000
+astra_tokens = 18000
+sol_tokens = 64000
+summary_characters = 12000
+visual_sources = 2
+
+[web]
+candidate_count = 20
+selected_min = 3
+selected_max = 7
+visual_sources = 2
+discovery_pages = 4
+page_timeout_seconds = 20
+settle_seconds = 0.6
+max_source_chars = 2000000
+capture_height = 2048
+
+[discord]
+enabled = false
+stream_previews = true
+bot_id = ""
+token_env = "BLOOM_DISCORD_TOKEN"
+keychain_service = "bloom.discord.bot-token"
+keychain_account = "discord-bot"
+owner_id = ""
+channel_id = ""
+guild_id = ""
+activity_channel_id = ""
+# Keep reconnect recovery bounded without silently skipping a larger backlog.
+max_recovery_messages = 5000
+
+[targets.local]
+kind = "local"
+
+[storage]
+enabled = false
+weekly_backups = true
+retention_days = 7
+interval_seconds = 3600
+max_files_per_run = 256
+max_bytes_per_run = 536870912
+max_seconds_per_run = 50
+# Configure cold_root, volume_mount and volume_id in config/local.toml.
+
+# Add explicitly selected SSH targets in config/local.toml:
+# [targets.mini]
+# kind = "ssh"
+# host = "home"
+# root = "/absolute/remote/project"
+# python = "/absolute/remote/project/.venv/bin/python"

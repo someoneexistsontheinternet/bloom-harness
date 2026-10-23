@@ -1,0 +1,44 @@
+name: checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      UV_LINK_MODE: copy
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.8.10"
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked --dev --python 3.12
+      - run: .venv/bin/ruff check src tests scripts
+      - run: .venv/bin/ruff format --check src tests scripts
+      - run: .venv/bin/python -m pytest -q
+      - run: .venv/bin/python scripts/check_publication.py
+      - name: Offline initialization
+        run: |
+          .venv/bin/python -m bloom.cli init
+          .venv/bin/python -m bloom.cli status
+      - name: Build source and wheel artifacts
+        run: uv build
+      - name: Inspect built packages
+        run: .venv/bin/python scripts/check_publication.py --dist dist

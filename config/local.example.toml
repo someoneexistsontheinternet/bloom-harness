@@ -1,0 +1,45 @@
+# Copy to config/local.toml, which is ignored by Git.
+# Credentials belong in the named environment variable, never in this file.
+# Replace all three model placeholders with IDs available to your provider.
+
+[profiles.astra]
+provider = "openai"
+model = "configure-astra-model"
+
+[profiles.sol]
+provider = "openai"
+model = "configure-sol-model"
+
+[profiles.luna]
+provider = "openai"
+model = "configure-luna-model"
+
+# The reference context policy is 1M tokens. Check your selected models and
+# provider support it; settings are explicit and are not catalog-discovered.
+# Provider endpoint/key variable and profile effort can be overridden here.
+
+[discord]
+enabled = false
+bot_id = ""
+owner_id = ""
+channel_id = ""
+guild_id = ""
+activity_channel_id = ""
+token_env = "BLOOM_DISCORD_TOKEN"
+keychain_service = "bloom.discord.bot-token"
+keychain_account = "discord-bot"
+
+[storage]
+enabled = false
+# Configure all three values before enabling cold storage:
+# cold_root = "/Volumes/YourArchive/bloom/cold"
+# volume_mount = "/Volumes/YourArchive"
+# volume_id = "the-volume-uuid"
+
+# Explicit remote targets are optional:
+# [targets.remote]
+# kind = "ssh"
+# host = "your-ssh-config-alias"
+# root = "/absolute/remote/project"
+# python = "/absolute/remote/project/.venv/bin/python"
+# known_hosts = "/absolute/local/known_hosts"
