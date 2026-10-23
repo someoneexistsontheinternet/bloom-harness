@@ -26,6 +26,9 @@ Restricted workers can read the Apple developer tools selected by
 `xcode-select`, including the selected Xcode app's libraries and frameworks.
 This covers both standalone Command Line Tools and full Xcode installations.
 Other applications stay outside the grant, and the toolchain remains read-only.
+The sandbox also permits reading the existing system Xcode license receipt at
+`/Library/Preferences/com.apple.dt.Xcode.plist`; it does not accept or change a
+license, read other preferences, or grant writes to the receipt.
 Selection follows the system setting because restricted workers do not inherit
 the supervisor's `DEVELOPER_DIR` override.
 

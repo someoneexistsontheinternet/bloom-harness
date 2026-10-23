@@ -17,6 +17,9 @@ from .privacy import clean
 from .store import atomic, encoded, now
 
 
+XCODE_LICENSE_RECEIPT = Path("/Library/Preferences/com.apple.dt.Xcode.plist")
+
+
 class UncertainEffect(RuntimeError):
     """An effect may have happened; its acknowledgement is not conclusive."""
 
@@ -121,6 +124,10 @@ def sandbox(mode: str, cwd: Path, network=False, extra_write=(), private_roots=(
         for spelling in {Path(path).absolute(), Path(path).resolve()}:
             rules.append(f"(allow file-read* (subpath {json.dumps(str(spelling))}))")
             ancestors.update(spelling.parents)
+    # Apple's shims verify the existing system license receipt even for Git.
+    # Reading this one file does not accept a license or expose other preferences.
+    rules.append(f"(allow file-read* (literal {quote(XCODE_LICENSE_RECEIPT)}))")
+    ancestors.update(XCODE_LICENSE_RECEIPT.resolve().parents)
     # dyld and getcwd must traverse directory entries, including /. This grants
     # traversal/listing of ancestors, not reads of files in sibling projects.
     for path in sorted(ancestors, key=str):

@@ -27,7 +27,13 @@ def test_selected_xcode_read_grant_preserves_sibling_and_write_denials(tmp_path,
     sibling = selected.parent / "Unrelated.app/private.txt"
     sibling.parent.mkdir()
     sibling.write_text("unrelated app")
+    receipt = tmp_path / "Library/Preferences/com.apple.dt.Xcode.plist"
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text("existing license receipt")
+    private_pref = receipt.parent / "unrelated.plist"
+    private_pref.write_text("unrelated preference")
     monkeypatch.setenv("DEVELOPER_DIR", str(sibling.parent))
+    monkeypatch.setattr(execution, "XCODE_LICENSE_RECEIPT", receipt)
 
     def selection(args, **kwargs):
         assert args == ["/usr/bin/xcode-select", "--print-path"]
@@ -38,12 +44,15 @@ def test_selected_xcode_read_grant_preserves_sibling_and_write_denials(tmp_path,
         patch.setattr(execution.subprocess, "run", selection)
         profile = execution.sandbox("read", assigned)
 
-    result = subprocess.run(profile + ["/bin/cat", str(library)], capture_output=True, text=True)
-    assert result.returncode == 0 and result.stdout == "selected toolchain", result.stderr
-    denied = subprocess.run(profile + ["/bin/cat", str(sibling)], capture_output=True)
-    assert denied.returncode != 0
-    write = subprocess.run(profile + ["/usr/bin/touch", str(library)], capture_output=True)
-    assert write.returncode != 0 and library.read_text() == "selected toolchain"
+    for path in (library, receipt):
+        original = path.read_text()
+        result = subprocess.run(profile + ["/bin/cat", str(path)], capture_output=True, text=True)
+        assert result.returncode == 0 and result.stdout == original, result.stderr
+        write = subprocess.run(profile + ["/usr/bin/touch", str(path)], capture_output=True)
+        assert write.returncode != 0 and path.read_text() == original
+    for path in (sibling, private_pref):
+        denied = subprocess.run(profile + ["/bin/cat", str(path)], capture_output=True)
+        assert denied.returncode != 0
 
 
 @pytest.mark.parametrize("output", ["", ".", "/", "relative/Developer"])
@@ -88,6 +97,8 @@ def test_dependency_package_checks_and_immutable_install(store, monkeypatch):
 
 
 async def test_worker_shell_heredoc_pipeline_and_grants(store):
+    baseline = subprocess.run(["/usr/bin/git", "--version"], capture_output=True, text=True)
+    assert baseline.returncode == 0, "Unsandboxed system Git failed: " + baseline.stderr
     runtime = Runtime(store)
     task = store.new_task("Exercise actual local shell contracts")
     child = await runtime.request(
@@ -116,7 +127,7 @@ async def test_worker_shell_heredoc_pipeline_and_grants(store):
                 break
             await asyncio.sleep(0.02)
             result = await runtime.tools.processes.observe(child["agent_id"], result["process_id"])
-        assert result["result"]["exit_code"] == expected, result
+        assert result["result"]["exit_code"] == expected, f"{ident}: {result.get('output', '')}"
         if ident == "heredoc":
             assert result["output"].strip() == "739"
     assert not (store.config.root / "forbidden.txt").exists()
