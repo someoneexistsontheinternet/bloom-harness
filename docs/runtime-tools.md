@@ -32,6 +32,12 @@ license, read other preferences, or grant writes to the receipt.
 Selection follows the system setting because restricted workers do not inherit
 the supervisor's `DEVELOPER_DIR` override.
 
+Worker PATH prefers real Homebrew/selected developer-tool binaries before
+Apple's `/usr/bin` launchers. Invoke `git` through PATH. Hard-coding
+`/usr/bin/git` can start Xcode plug-in discovery and use caches outside the
+worker's scratch grant; that launcher is not a supported restricted-worker
+entry point. Bloom does not grant broader application/cache access to run it.
+
 The managed executable is included in child/service PATH and granted read-only
 access to scoped workers. Target fields enumerate only configured locations
 that the agent may use; omitted targets select local execution. Target is not

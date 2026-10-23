@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import platform
+import subprocess
 import tarfile
 import urllib.request
 from pathlib import Path
@@ -27,13 +28,44 @@ def directory(root):
     return Path(root) / "workspace/tools" / PACKAGE
 
 
+def developer_directory():
+    """Resolve the system selection used by restricted children."""
+    if platform.system() != "Darwin":
+        return None
+    try:
+        selected = subprocess.run(
+            ["/usr/bin/xcode-select", "--print-path"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            # Restricted children do not inherit the supervisor's override.
+            env={"PATH": "/usr/bin:/bin"},
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if selected.returncode:
+        return None
+    path = Path(selected.stdout.strip())
+    if not path.is_absolute() or not path.is_dir():
+        return None
+    if path == Path("/Library/Developer/CommandLineTools") or (
+        path.name == "Developer"
+        and path.parent.name == "Contents"
+        and path.parent.parent.suffix == ".app"
+    ):
+        return path
+    return None
+
+
 def search_path(root, inherited="/usr/bin:/bin:/usr/sbin:/sbin"):
     # Prefer real Git/tool binaries over Apple's /usr/bin xcrun shims, which
     # attempt writes to an unrelated user cache even for read-only commands.
+    selected = developer_directory()
     paths = [
         str(Path(root) / ".venv/bin"),
         str(directory(root)),
         "/opt/homebrew/bin",
+        *([str(selected / "usr/bin")] if selected else []),
         "/Library/Developer/CommandLineTools/usr/bin",
         *inherited.split(":"),
     ]

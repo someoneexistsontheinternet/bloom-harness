@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import io
 import json
+import shlex
 import subprocess
 import tarfile
 
@@ -13,6 +14,25 @@ from bloom.runtime import Runtime
 from test_control_provenance import invoke
 from test_runtime_delivery import message
 from test_tools_processes import operation
+
+
+def test_command_path_prefers_selected_developer_binaries_to_system_shims(tmp_path, monkeypatch):
+    developer = tmp_path / "Xcode.app/Contents/Developer"
+    real_bin = developer / "usr/bin"
+    shim_bin = tmp_path / "system-shims"
+    for directory, value in ((real_bin, "native"), (shim_bin, "shim")):
+        directory.mkdir(parents=True)
+        binary = directory / "bloom-toolchain-probe"
+        binary.write_text(f"#!/bin/sh\nprintf '{value}'\n")
+        binary.chmod(0o755)
+    monkeypatch.setattr(toolchain, "developer_directory", lambda: developer)
+    result = subprocess.run(
+        ["bloom-toolchain-probe"],
+        env={"PATH": toolchain.search_path(tmp_path, str(shim_bin))},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0 and result.stdout == "native", result.stderr
 
 
 def test_selected_xcode_read_grant_preserves_sibling_and_write_denials(tmp_path, monkeypatch):
@@ -114,10 +134,13 @@ async def test_worker_shell_heredoc_pipeline_and_grants(store):
         },
     )
     python = store.config.root / ".venv/bin/python"
+    developer = toolchain.developer_directory()
+    assert developer is not None, "Install/select Apple Command Line Tools or Xcode"
     for ident, command, expected in [
         ("heredoc", str(python) + " - <<'PYTEST'\nprint(739)\nPYTEST\n", 0),
         ("pipeline", "false | head -n 1", 1),
-        ("system-git", "/usr/bin/git --version", 0),
+        ("path-git", "git --version", 0),
+        ("developer-git", shlex.quote(str(developer / "usr/bin/git")) + " --version", 0),
         ("denied", "echo forbidden > forbidden.txt", 1),
     ]:
         operation(store, child["task_id"], "start_process", ident)
