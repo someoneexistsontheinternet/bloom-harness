@@ -24,7 +24,10 @@ def main():
     except FileExistsError:
         raise SystemExit("Job already claimed; inspect its receipt")
     spec = json.loads((directory / "spec.json").read_text())
-    atomic(directory / "started.json", encoded({"pid": os.getpid(), "identity": identity(os.getpid()), "at": now()}))
+    atomic(
+        directory / "started.json",
+        encoded({"pid": os.getpid(), "identity": identity(os.getpid()), "at": now()}),
+    )
     child = None
 
     def stop(signum, frame):
@@ -35,9 +38,18 @@ def main():
     try:
         environment = {k: os.environ[k] for k in ("PATH", "LANG", "LC_ALL") if k in os.environ}
         environment.update(OMP_NUM_THREADS="2", OPENBLAS_NUM_THREADS="2", PYTHONUNBUFFERED="1")
-        with (directory / "stdout.txt").open("wb") as out, (directory / "stderr.txt").open("wb") as err:
-            child = subprocess.Popen(spec["argv"], cwd=spec["cwd"], env=environment,
-                                     stdout=out, stderr=err, start_new_session=True)
+        with (
+            (directory / "stdout.txt").open("wb") as out,
+            (directory / "stderr.txt").open("wb") as err,
+        ):
+            child = subprocess.Popen(
+                spec["argv"],
+                cwd=spec["cwd"],
+                env=environment,
+                stdout=out,
+                stderr=err,
+                start_new_session=True,
+            )
             code = child.wait()
         result = {"status": "completed", "exit_code": code, "at": now()}
     except Exception as exc:

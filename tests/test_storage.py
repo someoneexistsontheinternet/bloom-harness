@@ -12,20 +12,23 @@ from bloom4.store import Store
 
 def test_cold_search_offline_and_exact_recovery(tmp_path):
     store = Store(tmp_path / "workspace")
-    cold = tmp_path / "cold"; cold.mkdir()
+    cold = tmp_path / "cold"
+    cold.mkdir()
     source = store.put("rare original evidence")
     ev = store.append("source.saved", {"source": source, "search_source": source}, target="astra")
     os.utime(store.root / source["path"], (1, 1))
     Archive(store).configure(cold)
     assert Archive(store).sweep()["moved"] == 1
     assert store.read(source) == b"rare original evidence"
-    disconnected = tmp_path / "disconnected"; cold.rename(disconnected)
+    disconnected = tmp_path / "disconnected"
+    cold.rename(disconnected)
     assert store.search("rare")[0]["id"] == ev["id"]
     with pytest.raises(FileNotFoundError, match="reconnect"):
         store.read(source)
     assert Archive(store).sweep()["status"] == "deferred"
     assert not cold.exists()
-    with pytest.raises(FileNotFoundError): store.sync(rebuild=True)
+    with pytest.raises(FileNotFoundError):
+        store.sync(rebuild=True)
     assert store.search("rare")[0]["id"] == ev["id"]
     disconnected.rename(cold)
     store.sync(rebuild=True)
@@ -33,20 +36,27 @@ def test_cold_search_offline_and_exact_recovery(tmp_path):
 
 
 def test_active_memory_is_pinned(tmp_path):
-    store = Store(tmp_path / "workspace"); Agents(store).bootstrap()
+    store = Store(tmp_path / "workspace")
+    Agents(store).bootstrap()
     item = Memory(store).publish("owner", "astra", "L1", "open", "An unresolved obligation")
     os.utime(store.root / item["source"]["path"], (1, 1))
-    cold = tmp_path / "cold"; cold.mkdir(); Archive(store).configure(cold)
+    cold = tmp_path / "cold"
+    cold.mkdir()
+    Archive(store).configure(cold)
     assert Archive(store).sweep()["moved"] == 0
 
 
 def test_backup_restores_files_index_and_history_without_execution(tmp_path):
-    store = Store(tmp_path / "workspace"); Agents(store).bootstrap()
+    store = Store(tmp_path / "workspace")
+    Agents(store).bootstrap()
     Memory(store).publish("owner", "astra", "L0", "style", "A retained preference")
     source = store.put("cold original")
     store.append("source.saved", {"source": source, "search_source": source})
     os.utime(store.root / source["path"], (1, 1))
-    cold = tmp_path / "cold"; cold.mkdir(); Archive(store).configure(cold); Archive(store).sweep()
+    cold = tmp_path / "cold"
+    cold.mkdir()
+    Archive(store).configure(cold)
+    Archive(store).sweep()
     dest = tmp_path / "backup.zip"
     result = backup(store, dest)
     assert result["files"] > 0
@@ -56,18 +66,25 @@ def test_backup_restores_files_index_and_history_without_execution(tmp_path):
     recovered = Store(tmp_path / "restored")
     assert recovered.read(source) == b"cold original"
     assert Memory(recovered).get("astra", "L0", "style")["text"] == "A retained preference"
-    with pytest.raises(FileExistsError): restore(dest, tmp_path / "restored")
+    with pytest.raises(FileExistsError):
+        restore(dest, tmp_path / "restored")
 
 
 def test_large_history_is_referenced_once_and_current_context_stays_hot(tmp_path):
     from bloom4.context import Context
-    store = Store(tmp_path / "workspace"); Agents(store).bootstrap()
-    context = Context(store); context.snapshot("astra")
+
+    store = Store(tmp_path / "workspace")
+    Agents(store).bootstrap()
+    context = Context(store)
+    context.snapshot("astra")
     text = "Exact long input " * 1000
     event = context.append("astra", [{"role": "user", "content": text}])
     assert "items" not in event["data"] and "items_ref" in event["data"]
     assert context.items("astra")[-1]["content"] == text
-    ref = event["data"]["items_ref"]; os.utime(store.root / ref["path"], (1, 1))
-    cold = tmp_path / "cold"; cold.mkdir(); Archive(store).configure(cold)
+    ref = event["data"]["items_ref"]
+    os.utime(store.root / ref["path"], (1, 1))
+    cold = tmp_path / "cold"
+    cold.mkdir()
+    Archive(store).configure(cold)
     Archive(store).sweep()
     assert (store.root / ref["path"]).exists()

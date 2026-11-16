@@ -101,15 +101,30 @@ class Store:
                     self._fd.close()
 
     def _index(self, event, path):
-        existing = self.db.execute("SELECT digest FROM events WHERE id=?", (event["id"],)).fetchone()
+        existing = self.db.execute(
+            "SELECT digest FROM events WHERE id=?", (event["id"],)
+        ).fetchone()
         if existing:
             if existing[0] != event["digest"]:
                 raise ValueError("An immutable event changed: " + event["id"])
             return
-        self.db.execute("INSERT INTO events VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", (
-            event["seq"], event["id"], event["at"], event["kind"], event["actor"],
-            event["target"], event["task"], event.get("parent"), event.get("dedup"),
-            event["digest"], str(path.relative_to(self.root)), encoded(event["data"]).decode()))
+        self.db.execute(
+            "INSERT INTO events VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                event["seq"],
+                event["id"],
+                event["at"],
+                event["kind"],
+                event["actor"],
+                event["target"],
+                event["task"],
+                event.get("parent"),
+                event.get("dedup"),
+                event["digest"],
+                str(path.relative_to(self.root)),
+                encoded(event["data"]).decode(),
+            ),
+        )
         text = encoded(event).decode()
         if event["data"].get("search_source"):
             text += "\n" + self.read(event["data"]["search_source"]).decode(errors="replace")
@@ -128,7 +143,9 @@ class Store:
                 paths = sorted((self.root / "events").glob("*/*.json"))
                 actual = {str(p.relative_to(self.root)) for p in paths}
                 if known - actual:
-                    raise ValueError("Indexed original event is missing; restore it before continuing")
+                    raise ValueError(
+                        "Indexed original event is missing; restore it before continuing"
+                    )
                 for path in paths:
                     if str(path.relative_to(self.root)) in known and not rebuild:
                         continue
@@ -139,7 +156,9 @@ class Store:
                     event["digest"] = digest
                     self._index(event, path)
                 cursor = self.db.execute("SELECT seq FROM projection_cursor").fetchone()[0]
-                for row in self.db.execute("SELECT id FROM events WHERE seq>? ORDER BY seq", (cursor,)).fetchall():
+                for row in self.db.execute(
+                    "SELECT id FROM events WHERE seq>? ORDER BY seq", (cursor,)
+                ).fetchall():
                     self.index.apply(self.get(row[0]))
                 self.db.execute("RELEASE synchronize")
                 self.db.commit()
@@ -155,13 +174,29 @@ class Store:
             if dedup:
                 old = self.db.execute("SELECT * FROM events WHERE dedup=?", (dedup,)).fetchone()
                 if old:
-                    if (old["kind"], old["actor"], old["target"], old["task"], old["parent"],
-                        old["data"]) != (kind, actor, target, task, parent, encoded(data).decode()):
+                    if (
+                        old["kind"],
+                        old["actor"],
+                        old["target"],
+                        old["task"],
+                        old["parent"],
+                        old["data"],
+                    ) != (kind, actor, target, task, parent, encoded(data).decode()):
                         raise ValueError("Idempotency key reused with different content: " + dedup)
                     return self.get(old["id"])
             seq = self.db.execute("SELECT coalesce(max(seq),0)+1 FROM events").fetchone()[0]
-            event = dict(id=uid("ev"), seq=seq, at=now(), kind=kind, actor=actor,
-                         target=target, task=task, parent=parent, dedup=dedup, data=data)
+            event = dict(
+                id=uid("ev"),
+                seq=seq,
+                at=now(),
+                kind=kind,
+                actor=actor,
+                target=target,
+                task=task,
+                parent=parent,
+                dedup=dedup,
+                data=data,
+            )
             event["digest"] = hashlib.sha256(encoded(event)).hexdigest()
             path = self.root / "events" / event["at"][:10] / f"{seq:012d}-{event['id']}.json"
             atomic(path, encoded(event))
@@ -193,8 +228,12 @@ class Store:
             if val is not None:
                 terms.append(key + "=?")
                 args.append(val)
-        return [self.get(r[0]) for r in self.db.execute(
-            "SELECT id FROM events WHERE " + " AND ".join(terms) + " ORDER BY seq", args)]
+        return [
+            self.get(r[0])
+            for r in self.db.execute(
+                "SELECT id FROM events WHERE " + " AND ".join(terms) + " ORDER BY seq", args
+            )
+        ]
 
     def put(self, data, media="text/plain"):
         """Save exact bytes once; JSON metadata points to a portable relative path."""
@@ -206,17 +245,20 @@ class Store:
             atomic(path, data)
         elif hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             raise ValueError("Original object checksum mismatch")
-        return dict(sha256=digest, path=str(path.relative_to(self.root)), bytes=len(data), media=media)
+        return dict(
+            sha256=digest, path=str(path.relative_to(self.root)), bytes=len(data), media=media
+        )
 
     def read(self, ref):
         digest = ref["sha256"]
         if not re.fullmatch(r"[a-f0-9]{64}", digest):
             raise ValueError("Invalid content digest")
         path = (self.root / ref.get("path", "objects/" + digest)).resolve()
-        if not path.is_relative_to(self.root): raise PermissionError("Source path escapes the workspace")
+        if not path.is_relative_to(self.root):
+            raise PermissionError("Source path escapes the workspace")
         if path.exists():
             data = path.read_bytes()
-            if __import__('time').time() - path.stat().st_mtime > 3600:
+            if __import__("time").time() - path.stat().st_mtime > 3600:
                 os.utime(path, None)
         else:
             # Consult durable receipts directly: rebuilding the index must also
@@ -226,11 +268,15 @@ class Store:
                 event = json.loads(record.read_bytes())
                 if event.get("kind") == "archive.receipt" and event["data"]["sha256"] == digest:
                     receipts.append(event["data"])
-            if not receipts: raise FileNotFoundError("Missing original object: " + digest)
+            if not receipts:
+                raise FileNotFoundError("Missing original object: " + digest)
             cold = Path(receipts[-1]["cold_path"])
             from .storage import connected
+
             if not connected(cold.parent):
-                raise FileNotFoundError("Original is archived; reconnect the recorded volume: " + str(cold))
+                raise FileNotFoundError(
+                    "Original is archived; reconnect the recorded volume: " + str(cold)
+                )
             data = gzip.decompress(cold.read_bytes())
         if hashlib.sha256(data).hexdigest() != digest:
             raise ValueError("Original object checksum mismatch")
@@ -241,8 +287,12 @@ class Store:
         if not words:
             return []
         match = " OR ".join('"' + word + '"' for word in words)
-        return [self.get(row[0]) for row in self.db.execute(
-            "SELECT id FROM search WHERE search MATCH ? ORDER BY rank LIMIT ?", (match, limit))]
+        return [
+            self.get(row[0])
+            for row in self.db.execute(
+                "SELECT id FROM search WHERE search MATCH ? ORDER BY rank LIMIT ?", (match, limit)
+            )
+        ]
 
     def close(self):
         self.db.close()

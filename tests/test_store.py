@@ -53,7 +53,8 @@ def test_tampered_original_refused(tmp_path):
     store = Store(tmp_path)
     ev = store.append("original", {})
     path = next((tmp_path / "events").glob("*/*.json"))
-    data = json.loads(path.read_text()); data["data"] = {"fake": True}
+    data = json.loads(path.read_text())
+    data["data"] = {"fake": True}
     path.write_text(json.dumps(data))
     with pytest.raises(ValueError, match="checksum"):
         store.get(ev["id"])

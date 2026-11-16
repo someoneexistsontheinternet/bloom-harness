@@ -56,8 +56,13 @@ class Agents:
         if role not in PROFILES or not responsibility.strip():
             raise ValueError("Select a role and an explicit responsibility")
         agent = Agent(name, role, responsibility, parent, seed)
-        self.store.append("agent.created", asdict(agent), actor=parent or "owner", target=name,
-                          dedup="agent:" + name)
+        self.store.append(
+            "agent.created",
+            asdict(agent),
+            actor=parent or "owner",
+            target=name,
+            dedup="agent:" + name,
+        )
         path = self.store.root / "agents" / name / "identity.json"
         atomic(path, encoded(asdict(agent)))
         (self.store.root / "work" / name).mkdir(parents=True, exist_ok=True)
@@ -65,9 +70,13 @@ class Agents:
 
     def bootstrap(self):
         if not self.store.events("agent.created", target="astra"):
-            self.create("astra", "astra", "Understand owner intent, direct work and accept outcomes.")
+            self.create(
+                "astra", "astra", "Understand owner intent, direct work and accept outcomes."
+            )
         if not self.store.events("agent.created", target="terra"):
-            self.create("terra", "terra", "Assess changed evidence and decide whether to wake its owner.")
+            self.create(
+                "terra", "terra", "Assess changed evidence and decide whether to wake its owner."
+            )
 
     def scope(self, name):
         self.get(name)
