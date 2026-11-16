@@ -22,6 +22,11 @@ Five explicit fault-injection tests failed during implementation:
 The regressions live in `tests/test_failure_boundaries.py`. These were local
 synthetic fault tests, not failures in a production deployment.
 
+The first clean GitHub checkout also exposed a CI setup mistake: the configured
+pytest base directory's parent did not exist. That caused 49 fixture-setup errors
+before those tests ran. The workflow now creates its log parent explicitly.
+The original failed run is [retained in Actions](https://github.com/someoneexistsontheinternet/bloom-harness/actions/runs/43862552775).
+
 ## Current practical limits
 
 - Codex's compatibility transport has no configured server output-token cap.

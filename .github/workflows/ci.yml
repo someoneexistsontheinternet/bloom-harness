@@ -30,6 +30,7 @@ jobs:
       - run: uv sync --locked --group dev
       - run: .venv/bin/ruff check src tests scripts
       - run: .venv/bin/ruff format --check src tests scripts
+      - run: mkdir -p logs/codex-misc/ci
       - run: .venv/bin/python -m pytest --basetemp logs/codex-misc/ci/fixtures
       - run: .venv/bin/python scripts/check_publication.py
       - run: uv build
