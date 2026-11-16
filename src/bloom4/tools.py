@@ -93,6 +93,7 @@ class Tools:
 
     def execute(self, agent, task, call, approval):
         """Return a native tool output; recovered writes reuse evidence instead of rerunning."""
+        self.store.sync()
         name, call_id = call["name"], call["call_id"]
         args = json.loads(call["arguments"])
         prior = [e for e in self.store.events("tool.completed", target=agent) if e["data"]["call_id"] == call_id]

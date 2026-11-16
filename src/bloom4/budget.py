@@ -28,9 +28,12 @@ class Budget:
         output, inputs, unknown = 0, 0, 0
         for call in calls:
             usage = complete.get(call["id"], {}).get("data", {}).get("usage", {}) or {}
-            unknown += int("input_tokens" not in usage or "output_tokens" not in usage)
-            output += usage.get("output_tokens", call["data"]["output_reserve"])
-            inputs += usage.get("input_tokens", call["data"]["input_estimate"])
+            actual_output, actual_input = usage.get("output_tokens"), usage.get("input_tokens")
+            valid_output = type(actual_output) is int and actual_output >= 0
+            valid_input = type(actual_input) is int and actual_input >= 0
+            unknown += int(not valid_output or not valid_input)
+            output += actual_output if valid_output else call["data"]["output_reserve"]
+            inputs += actual_input if valid_input else call["data"]["input_estimate"]
         return {"grant": grant["id"], "limits": grant["data"], "calls": len(calls),
                 "remaining_calls": grant["data"]["calls"] - len(calls),
                 "accounted_output": output, "accounted_input": inputs, "unknown_usage_calls": unknown}

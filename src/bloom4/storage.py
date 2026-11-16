@@ -84,7 +84,7 @@ class Archive:
             receipt = self.store.append("archive.receipt", {"sha256": digest, "cold_path": str(target),
                 "bytes": len(data), "verified_at": now(), "source": str(path.relative_to(self.store.root))})
             with self.store.locked():
-                if path.exists() and path.stat().st_mtime_ns == stamp and connected(destination):
+                if path.exists() and path.stat().st_mtime_ns == stamp and connected(destination) and path.name not in self.pins():
                     path.unlink(); moved += 1
                     for event in self.store.events("result.saved"):
                         if event["data"]["source"]["sha256"] == digest:

@@ -98,7 +98,7 @@ class Context:
             raise ValueError("Context exceeds configured 1M window; explicit compaction required")
         return body
 
-    def compact(self, agent, summary, *, approval=None, actor=None):
+    def compact(self, agent, summary, *, approval=None, actor=None, through=None, source_items=None):
         """Adopt a source-linked working summary; preserve exact history and active memory."""
         identity = self.agents.get(agent)
         if actor != "owner":
@@ -114,8 +114,9 @@ class Context:
         if estimate(summary) > PROFILES[identity.role]["target"]:
             raise ValueError("Summary exceeds target; original context retained")
         old = self.snapshot(agent)
-        through = max((e["seq"] for e in self.store.events(target=agent)), default=0)
-        source = self.store.put(encoded(self.items(agent)), "application/json")
+        if through is None:
+            through = max((e["seq"] for e in self.store.events(target=agent)), default=0)
+        source = self.store.put(encoded(self.items(agent) if source_items is None else source_items), "application/json")
         timeline = self.store.append("timeline.entry", {"text": summary, "source": source,
             "from_snapshot": old["id"], "through": through, "approval": approval},
             actor=actor or agent, target=agent)

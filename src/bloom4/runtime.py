@@ -177,10 +177,13 @@ class Runtime:
         """Owning-model working compaction; no Luna permanent-memory authoring."""
         role = self.agents.get(agent).role
         request = self.context.request(agent, definitions(role))
+        original_items = request["input"]
+        through = max((e["seq"] for e in self.store.events(target=agent)), default=0)
         request = {**request, "tools": [], "input": request["input"] + [{"role": "user", "content":
             f"Compact this working context to well under {PROFILES[role]['target']} tokens. Return only a chronological working memo. Preserve motivation, decisions, corrections, uncertainty, source IDs and ALL unresolved obligations. This is your approval of the exact memo; originals remain retrievable."}]}
         response, approval = await self.infer(agent, task, request, "compact")
-        return self.context.compact(agent, public_text(response), approval=approval["id"])
+        return self.context.compact(agent, public_text(response), approval=approval["id"],
+                                    through=through, source_items=original_items)
 
     async def dispatch(self, task, call, approval):
         agent, task_id = task["agent"], task["id"]
@@ -264,8 +267,6 @@ class Runtime:
         text = public_text(response)
         if not text.strip():
             raise ValueError("No final response or tool calls; task remains unfinished")
-        self.store.append("task.completed", {"text": text, "call": approval}, target=agent, task=task_id,
-                          dedup="completion:" + task_id)
         if task["purpose"] in ("retrieval", "curation"):
             parent = self.tasks()[task["parent_task"]]; owner = parent["agent"]
             data = {"summary": text, "sources": [approval], "path": str(self.store.root / "events"), "status": "complete"}
@@ -290,10 +291,12 @@ class Runtime:
                                   dedup="required-evidence:" + task_id)
             else:
                 preferences = [e["data"] for e in self.store.events("selection.approved", target=owner)]
-                self.open("terra", "Assess this evidence for " + owner + ". Parent status: " + parent["status"] +
-                    ". Stage ordinary supplements; wake only for material corrections or unresolved necessary work.\n" +
-                    json.dumps({"question": parent["message"], "evidence": data, "approved_preferences": preferences}),
-                    task="attention_" + task_id, purpose="attention", origin="system", evidence=ev["id"], read_owner=owner)
+                if not self.store.events("task.opened", task="attention_" + task_id):
+                    self.open("terra", "Assess this evidence for " + owner + ". Parent status: " + parent["status"] +
+                        ". Stage ordinary supplements; wake only for material corrections or unresolved necessary work.\n" +
+                        json.dumps({"question": parent["message"], "evidence": data, "approved_preferences": preferences}),
+                        task="attention_" + task_id, purpose="attention", origin="system", evidence=ev["id"], read_owner=owner,
+                        parent_task=parent["id"])
         elif task["purpose"] == "attention":
             if not any(e["dedup"] == "attention:" + task_id for e in self.store.events("appendix.staged")):
                 evidence = self.store.get(task["evidence"])
@@ -307,6 +310,10 @@ class Runtime:
         else:
             self.store.append("answer", {"text": text, "call": approval, "origin": task["origin"]},
                               actor=agent, target=agent, task=task_id, dedup="answer:" + task_id)
+        # Publication/handoff receipts precede terminal lifecycle state. A crash
+        # between them replays this idempotent settlement, never new inference.
+        self.store.append("task.completed", {"text": text, "call": approval}, target=agent, task=task_id,
+                          dedup="completion:" + task_id)
 
     async def advance(self, task):
         agent, task_id = task["agent"], task["id"]
@@ -347,13 +354,31 @@ class Runtime:
                     self.store.append("task.waiting", {}, target=agent, task=task_id)
                 return
             request = self.context.request(agent, definitions(role))
-            if estimate(request) > PROFILES[role]["compact_at"]:
-                await self.compact(agent, task_id)
+            snapshot_id = self.context.snapshot(agent)["id"]
+            deferred = any(e["data"]["snapshot"] == snapshot_id for e in self.store.events("compaction.deferred", target=agent))
+            if estimate(request) > PROFILES[role]["compact_at"] and not deferred:
+                try:
+                    await self.compact(agent, task_id)
+                except (Exception,) as exc:
+                    self.store.append("compaction.deferred", {"snapshot": snapshot_id,
+                        "error": type(exc).__name__ + ": " + str(exc)}, target=agent, task=task_id)
+                pending = self.mailbox.pending(agent)
+                if pending:
+                    self.context.deliver(agent, pending)
+                    self.mailbox.consume(agent, [e["id"] for e in pending], task_id)
                 request = self.context.request(agent, definitions(role))
             response, completed = await self.infer(agent, task_id, request)
             if self.tasks()[task_id]["status"] == "paused":
                 return  # Keep the completed response; dispatch its tools only after resume.
             calls = self.context.pending_calls(agent)
+            # HTTP cannot inject during generation. Before any not-yet-started
+            # effect, ingest late owner input and explicitly settle stale calls.
+            self.mailbox.ingest()
+            if any(e["data"].get("urgent") for e in self.mailbox.pending(agent)):
+                for call in calls:
+                    self.tools.finish(agent, task_id, call["call_id"], {
+                        "status": "not_executed", "reason": "Urgent owner update arrived before dispatch; reconsider this action."})
+                return
             for call in calls:
                 await self.dispatch(task, call, completed["id"])
             if role == "terra" and any(c["name"] == "attention" for c in calls):
