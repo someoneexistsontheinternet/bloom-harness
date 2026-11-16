@@ -33,14 +33,7 @@ class Runtime:
         self.stopping = False
 
     def tasks(self):
-        result = {}
-        for ev in self.store.events():
-            if ev["kind"] == "task.opened":
-                result[ev["task"]] = {**ev["data"], "id": ev["task"], "agent": ev["target"],
-                                      "status": "ready", "opened": ev["id"], "seq": ev["seq"]}
-            elif ev["kind"] in ("task.ready", "task.waiting", "task.completed", "task.blocked", "task.paused") and ev["task"] in result:
-                result[ev["task"]].update(status=ev["kind"].split(".")[1], **ev["data"])
-        return result
+        return self.store.index.tasks()
 
     def open(self, agent, message, *, task=None, parent_task=None, purpose="work", required=False,
              origin="owner", input_event=None, evidence=None, read_owner=None):
@@ -157,6 +150,7 @@ class Runtime:
                 last = i == len(responses) - 1
                 data = {"call": calls[i]["id"], "response": self.store.put(encoded(response), "application/json"),
                         "trace": trace, "usage": response.get("usage") or {},
+                        "model_reported": response.get("model"),
                         "purpose": purpose if last else "continuation_part"}
                 if last and generation.native_items is not None:
                     data["native_items"] = self.store.put(encoded(generation.native_items), "application/json")
@@ -406,7 +400,7 @@ class Runtime:
                     if self.dependencies(task["id"]) and not task.get("urgent"): continue
                     self.active[task["agent"]] = asyncio.create_task(self.advance(task))
                 atomic(self.store.root / "status.json", encoded({"at": time.time(), "pid": __import__('os').getpid(),
-                    "active_agents": list(self.active), "tasks": list(self.tasks().values()), "budget": self.budget.status()}))
+                    "active_agents": list(self.active), **self.status()}))
                 unfinished = any(t["status"] in ("ready", "waiting") for t in self.tasks().values())
                 if not watch and not self.active and not unfinished: break
                 # Blocked dependencies do not keep an otherwise idle --once run spinning.
@@ -421,7 +415,9 @@ class Runtime:
         return self.status()
 
     def status(self):
-        return {"tasks": list(self.tasks().values()), "budget": self.budget.status(),
+        tasks = [{k: v for k, v in t.items() if k not in ("message", "evidence", "text")} |
+                 {"objective": t["message"][:240]} for t in self.tasks().values()]
+        return {"tasks": tasks, "budget": self.budget.status(),
                 "agents": [{"id": a.id, "role": a.role, "responsibility": a.responsibility} for a in self.agents.all()],
                 "pending_inputs": {a.id: len(self.mailbox.pending(a.id)) for a in self.agents.all()},
                 "staged_appendices": len(self.store.events("appendix.staged")) - len(self.store.events("appendix.delivered"))}

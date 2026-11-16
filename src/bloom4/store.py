@@ -14,6 +14,8 @@ import sqlite3
 import threading
 import uuid
 
+from .index import Index
+
 
 def now():
     return dt.datetime.now(dt.UTC).isoformat()
@@ -78,6 +80,7 @@ class Store:
             CREATE INDEX IF NOT EXISTS events_task ON events(task,seq);
             CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5(id UNINDEXED,text);
         """)
+        self.index = Index(self.db)
         self.sync()
 
     @contextlib.contextmanager
@@ -114,24 +117,35 @@ class Store:
     def sync(self, rebuild=False):
         """Recover a committed file missing from the index; never infer a missing event."""
         with self.locked():
-            if rebuild:
-                self.db.execute("DELETE FROM events")
-                self.db.execute("DELETE FROM search")
-            known = {r["path"] for r in self.db.execute("SELECT path FROM events")}
-            paths = sorted((self.root / "events").glob("*/*.json"))
-            actual = {str(p.relative_to(self.root)) for p in paths}
-            if known - actual:
-                raise ValueError("Indexed original event is missing; restore it before continuing")
-            for path in paths:
-                if str(path.relative_to(self.root)) in known and not rebuild:
-                    continue
-                event = json.loads(path.read_bytes())
-                digest = event.pop("digest")
-                if hashlib.sha256(encoded(event)).hexdigest() != digest:
-                    raise ValueError("Event checksum mismatch: " + str(path))
-                event["digest"] = digest
-                self._index(event, path)
-            self.db.commit()
+            self.db.execute("SAVEPOINT synchronize")
+            try:
+                if rebuild:
+                    self.db.execute("DELETE FROM events")
+                    self.db.execute("DELETE FROM search")
+                    self.index.clear()
+                known = {r["path"] for r in self.db.execute("SELECT path FROM events")}
+                paths = sorted((self.root / "events").glob("*/*.json"))
+                actual = {str(p.relative_to(self.root)) for p in paths}
+                if known - actual:
+                    raise ValueError("Indexed original event is missing; restore it before continuing")
+                for path in paths:
+                    if str(path.relative_to(self.root)) in known and not rebuild:
+                        continue
+                    event = json.loads(path.read_bytes())
+                    digest = event.pop("digest")
+                    if hashlib.sha256(encoded(event)).hexdigest() != digest:
+                        raise ValueError("Event checksum mismatch: " + str(path))
+                    event["digest"] = digest
+                    self._index(event, path)
+                cursor = self.db.execute("SELECT seq FROM projection_cursor").fetchone()[0]
+                for row in self.db.execute("SELECT id FROM events WHERE seq>? ORDER BY seq", (cursor,)).fetchall():
+                    self.index.apply(self.get(row[0]))
+                self.db.execute("RELEASE synchronize")
+                self.db.commit()
+            except BaseException:
+                self.db.execute("ROLLBACK TO synchronize")
+                self.db.execute("RELEASE synchronize")
+                raise
 
     def append(self, kind, data, *, actor="system", target="", task="", parent=None, dedup=None):
         """Commit one event atomically; identical idempotent submissions reuse it."""
@@ -151,6 +165,7 @@ class Store:
             path = self.root / "events" / event["at"][:10] / f"{seq:012d}-{event['id']}.json"
             atomic(path, encoded(event))
             self._index(event, path)
+            self.index.apply(event)
             self.db.commit()
             return event
 

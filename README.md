@@ -93,3 +93,9 @@ lookup. Tool-produced text over 50k is retained and curated; Luna is exempt.
 Pause prevents new effects; already running commands need explicit cancellation.
 Reconciliation records abandonment of a model purchase, not fabricated success.
 Compaction uses the owning model and preserves originals and exact active L1.
+
+SQLite also provides relational `agent_index`, `task_index`, `call_index` and
+`memory_index` tables for joins and monitoring. They are projections of the
+event files, rebuilt by `reindex`. A failed rebuild rolls back without destroying
+the previous searchable index. Status snapshots contain short objectives and
+references rather than repeated full helper inputs.
