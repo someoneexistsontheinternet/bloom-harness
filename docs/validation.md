@@ -38,6 +38,11 @@ Neither the 1M window nor long-running memory quality was stress-tested.
 
 ## Offline boundaries
 
+Final local gate: **53 tests passed**, explicit changed-file compilation,
+Ruff lint/format checks, source and wheel/sdist publication scans, and both
+package builds succeeded. The final local run is
+`logs/codex-misc/publication/local-20261116_195850_923562/` (ignored).
+
 The suite exercises file-before-index recovery, idempotent inbox inputs,
 per-recipient consumption, exact memory approval, revision conflicts, private
 fork divergence and grants, immutable Markdown, stable contexts, real local
@@ -46,6 +51,9 @@ appendices, budget exhaustion, uncertain inference, publication crashes,
 urgent-effect cancellation, compaction races, idle thresholds/preemption,
 curator failure, relational rebuilds, disconnected cold storage, backups and
 non-executing restores. The actual CLI demo/export path is also exercised.
+CLI observations additionally verify Terra-before-owner routing, idempotent
+review and preserving paused/blocked tasks. These final inbox additions were
+verified offline; the earlier live checks did not exercise this CLI entry point.
 
 Five initially failing fault tests and their fixes are described in
 [the teething log](teething.md). No claims of production reliability or general
@@ -60,5 +68,9 @@ autonomous coding quality follow from a small arithmetic example.
   Owners can already write scripts and record their exact references in memory.
 - A broad semantic memory-quality evaluation, learned stagnation detection,
   or verified account-credit accounting.
+- Continuous partial-process monitoring, autonomous project scheduling and
+  mandatory Terra quality review of every Sol implementation. Terminal process
+  receipts and required Sol reports currently resume the waiting owner directly;
+  optional retrieval and explicit observations go through Terra.
 - Automatic cold archival of arbitrary repository logs; configured archival
   currently handles workspace payloads while the CLI runner is alive.

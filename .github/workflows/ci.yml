@@ -1,0 +1,36 @@
+name: v4 checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v4-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e
+        with:
+          version: "0.8.10"
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked --group dev
+      - run: .venv/bin/ruff check src tests scripts
+      - run: .venv/bin/ruff format --check src tests scripts
+      - run: .venv/bin/python -m pytest --basetemp logs/codex-misc/ci/fixtures
+      - run: .venv/bin/python scripts/check_publication.py
+      - run: uv build
+      - run: .venv/bin/python scripts/check_publication.py --dist dist
