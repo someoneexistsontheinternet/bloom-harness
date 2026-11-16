@@ -1,32 +1,21 @@
-# Working on Bloom
+# Working on the v4 experiment
 
-Read README.md and the relevant docs before changing behavior. This is an
-experimental personal-agent runtime; durable effects, exact evidence and
-owner intent are more important than a passing happy-path demonstration.
+Read README.md and docs/contracts.md. Private execution state is in ignored
+notes/current.md when present. V3 is a separate, stopped reference installation.
 
-- Use this checkout's `.venv`, created/synced with uv. Preserve the lockfile and
-  avoid unrelated dependency upgrades. Run small checks before broad tests.
-- Inspect Git state and active processes. Preserve unrelated edits. Never edit
-  a frozen release, live helper bundle or environment used by another run.
-- Keep runtime data, logs, credentials, transcripts and personal operational
-  notes out of Git. Never print credential values or dump whole environments.
-- Keep development records under ignored local notes/logs when needed. Preserve
-  unique evidence when reorganizing; do not delete runtime data to tidy a tree.
-- Persist intent before external effects. Reuse acknowledged work on recovery;
-  never silently replay an uncertain purchase, command or outbound message.
-- Astra owns consequential reasoning and every semantic-memory approval. Sol
-  owns substantial assignments. Luna reads evidence and may write disposable
-  helpers; it cannot publish memory or modify maintained project code.
-- Keep the sent main-history prefix stable until compaction. Preserve original
-  sources and record derived views separately. Do not lower model context
-  windows or change a research mechanism merely to make a test cheap.
-- Web inputs use `web_document.py`: complete document text once, inline data
-  tables/useful references, native images and concise provenance. Raw DOM
-  inventories stay in saved metadata, including for Luna and legacy captures.
-- Compile the Python files you changed and run focused runtime regressions.
-  Use Ruff for formatting. Browser extraction changes also need the real
-  Safari fixtures in `scripts/evaluate_web_representation.py` when available.
-- Unit tests use fake transports. Live model, Discord, browser, deployment and
-  reset checks have effects; run them only within the user's authorized scope.
-- Commit coherent verified changes with explicitly reviewed paths. Explain
-  what passed, what remains unverified and any changed behavior.
+- Commit each coherent feature after focused verification. README must describe
+  the feature and its real limits. Do not accumulate an unreviewable mega-commit.
+- Use this checkout's .venv and uv. Compile changed Python files and exercise
+  their behavior. No paid model calls in the ordinary test suite.
+- Files are the durable source; SQLite is a disposable index. Preserve events,
+  original results, pending work, source references and acknowledged effects.
+- Keep native history stable until explicit compaction. Never execute partial
+  tool arguments or silently retry an uncertain request or process.
+- Persistent owners approve their private memory; Astra approves shared memory.
+  Luna reads and reports. Terra's working compaction does not publish beliefs.
+- Keep credentials, local notes, transcripts and runtime state out of Git.
+  Never print authentication material or copy private v3 history here.
+- No Discord, browser service, public web server or production deployment is
+  part of this CLI experiment. Inspect before changing another process.
+- Report actual failure boundaries. Synthetic provider tests do not establish
+  live model compatibility. Keep live verification explicitly budgeted.
