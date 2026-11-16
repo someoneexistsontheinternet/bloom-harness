@@ -41,3 +41,11 @@ to 1M; these working policies are separate from model capacity.
 .venv/bin/bloom4 memory publish --agent astra --layer L0 --key style --file style.md
 .venv/bin/bloom4 agent fork alternate --from-agent astra --responsibility 'Explore another approach'
 ```
+
+Native tools include Python AST outlines (docstrings/signatures/ranges plus
+top-level effects), exact file ranges, revision-checked writes and detached
+process receipts. Each substantive write/command records a short intent in the
+same tool call. Helpers cannot write maintained files or launch processes.
+Process execution is opt-in and **not an OS sandbox**; use a trusted workspace.
+Large reads retain full originals and request Luna curation before exposing
+their text to expensive owners. Small exact ranges remain available.
