@@ -16,13 +16,15 @@ from .mailbox import Mailbox
 from .memory import Memory
 from .provider import Generation, ProviderFailure, public_text
 from .store import Store, atomic, encoded, uid
-from .tools import Tools, definitions
+from .tools import Tools, definitions, arguments
 
 
 class Runtime:
     """Wake on changed evidence, preserve effects, and never buy inference for polling."""
 
     def __init__(self, store: Store, provider, *, allow_processes=False, output=None, auto_recall=True, idle_seconds=1200):
+        if provider is not None and store.events("workspace.simulation") and not getattr(provider, "simulated", False):
+            raise ValueError("This workspace contains simulated history; use a fresh workspace for real models")
         self.store, self.provider = store, provider
         self.agents = Agents(store); self.agents.bootstrap()
         self.context = Context(store); self.memory = Memory(store)
@@ -156,7 +158,7 @@ class Runtime:
             return item
 
         try:
-            generation = await self.provider.generate(request, on_text=lambda text: self.output(agent, text),
+            generation = await self.provider.generate(request, on_text=lambda text: self.output(agent, text) if purpose == "turn" else None,
                 steering=queue if purpose == "turn" else None, reserve_steer=reserve)
             trace = self.store.put(encoded(generation.trace), "application/json")
             responses = [*generation.continuations, generation.response]
@@ -211,7 +213,11 @@ class Runtime:
 
     async def dispatch(self, task, call, approval):
         agent, task_id = task["agent"], task["id"]
-        args = json.loads(call["arguments"]); name = call["name"]
+        name = call["name"]
+        try: args = arguments(self.agents.get(agent).role, call)
+        except (ValueError, PermissionError, TypeError) as exc:
+            self.tools.finish(agent, task_id, call["call_id"], {"error": str(exc), "status": "not_executed"})
+            return
         if any(e["data"]["call_id"] == call["call_id"] for e in self.store.events("tool.completed", target=agent)):
             return
         try:

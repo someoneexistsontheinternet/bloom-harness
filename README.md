@@ -10,6 +10,10 @@ Do not hide a large rewrite behind one final commit.
 
 ```sh
 uv sync --group dev
+# Scripted model decisions, real local file/process checks, zero API calls.
+.venv/bin/bloom4 --workspace .bloom-demo demo
+.venv/bin/bloom4 --workspace .bloom-demo timeline
+# Real models use a separate fresh workspace.
 .venv/bin/bloom4 --workspace .bloom init
 .venv/bin/bloom4 --workspace .bloom post 'Inspect the project'
 .venv/bin/bloom4 --workspace .bloom timeline
@@ -24,6 +28,7 @@ Inbox files are authoring inputs, not executable scripts. See
 Runtime state, local credentials, logs and development checkpoints are ignored.
 The experiment has no Discord or HTTP gateway. Model execution is added behind
 an explicit budget; ordinary tests use synthetic providers.
+Demo workspaces are explicitly labeled and cannot be opened with a real provider.
 
 Persistent identities now have explicit responsibilities and isolated work
 directories. Accepted L0–L2 memory revisions are real Markdown files with
@@ -62,6 +67,9 @@ their text to expensive owners. Small exact ranges remain available.
 .venv/bin/bloom4 chat --allow-processes
 .venv/bin/bloom4 status
 .venv/bin/bloom4 usage
+.venv/bin/bloom4 timeline --agent astra --kind model.started
+.venv/bin/bloom4 export-call MODEL_STARTED_EVENT --to /path/to/new/export-directory
+.venv/bin/bloom4 source EVENT_ID --field response
 ```
 
 The default provider reuses an existing Codex login without copying credentials.
@@ -71,12 +79,17 @@ credential file. `--output-reserve` is a local admission reservation. The public
 API also receives it as `max_output_tokens`; the Codex compatibility adapter
 does not, so it is **not a hard output or credit ceiling** there. No dollar or
 credit estimate is presented as an invoice. Budget grants survive restarts.
+After budget exhaustion, explicitly grant another allowance and `resume` the
+blocked task. Nothing automatically renews the allowance. `usage --task TASK`
+includes causal child work; the CLI reports task/workspace scopes, not Discord
+owner-message billing cards.
 
 `chat` accepts `/status`, `/usage`, `/urgent TEXT` and `/quit`. Input can also
 arrive through another CLI's `post` or a complete JSON/TOML inbox file while
 `run --watch` is active. HTTP steering is delivered at the next completed
 response boundary; `--transport websocket` enables native steering where the
 endpoint supports it. Public API support does not prove Codex-route support.
+`chat` and `run --watch` continue until stopped unless `--seconds` is supplied.
 Each request record now contains the exact JSON wire payload, excluding auth
 headers. A native steering successor reserves another call before submission;
 its actual steering payload and separate reported usage are retained.

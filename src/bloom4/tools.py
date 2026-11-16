@@ -63,6 +63,29 @@ def definitions(role):
     return result
 
 
+def arguments(role, call):
+    """Validate the small public schema before effects; malformed calls receive tool errors."""
+    schema = next((t for t in definitions(role) if t["name"] == call["name"]), None)
+    if schema is None: raise PermissionError("Tool is not available to this role")
+    args = json.loads(call["arguments"])
+    if not isinstance(args, dict): raise ValueError("Tool arguments must be an object")
+    required = set(schema["parameters"]["required"])
+    properties = schema["parameters"]["properties"]
+    if required - args.keys(): raise ValueError("Required tool arguments are missing")
+    if args.keys() - properties.keys(): raise ValueError("Unexpected tool arguments")
+    args = {k: v for k, v in args.items() if v is not None or k in required}
+    for key, value in args.items():
+        field = properties[key]; expected = field["type"]
+        valid = ((expected == "string" and isinstance(value, str)) or
+                 (expected == "integer" and type(value) is int) or
+                 (expected == "boolean" and type(value) is bool) or
+                 (expected == "array" and isinstance(value, list) and all(isinstance(x, str) for x in value)))
+        if not valid or ("enum" in field and value not in field["enum"]):
+            raise ValueError("Invalid tool argument: " + key)
+    if call["name"] == "run_process" and not args["argv"]: raise ValueError("A process needs nonempty argv")
+    return args
+
+
 class Tools:
     def __init__(self, store: Store, *, allow_processes=False):
         self.store = store
@@ -104,7 +127,7 @@ class Tools:
         """Return a native tool output; recovered writes reuse evidence instead of rerunning."""
         self.store.sync()
         name, call_id = call["name"], call["call_id"]
-        args = json.loads(call["arguments"])
+        args = arguments(self.agents.get(agent).role, call)
         prior = [e for e in self.store.events("tool.completed", target=agent) if e["data"]["call_id"] == call_id]
         if prior:
             return self.output_value(prior[-1])
@@ -136,7 +159,7 @@ class Tools:
                 else:
                     lines = text.splitlines(keepends=True)
                     start, end = args.get("start", 1), args.get("end", len(lines))
-                    if start < 1 or end < start or start > len(lines) + 1:
+                    if start < 1 or (end < start and lines) or start > len(lines) + 1:
                         raise ValueError("Invalid 1-based inclusive range")
                     value = {"text": "".join(lines[start - 1:end]), "start": start, "end": min(end, len(lines))}
                 value.update(source=source, path=str(path), sha256=source["sha256"])

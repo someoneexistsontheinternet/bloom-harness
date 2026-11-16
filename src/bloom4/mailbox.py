@@ -42,6 +42,8 @@ class Mailbox:
                     identifier(data["target"])
                     if data["target"] != path.parent.name or not isinstance(data["text"], str):
                         raise ValueError("Input target/text mismatch")
+                    if type(data.get("urgent", False)) is not bool:
+                        raise ValueError("urgent must be a Boolean")
                     task = identifier(data.get("task", data["id"]))
                     envelope = dict(id=data["id"], target=data["target"], text=data["text"],
                                     urgent=bool(data.get("urgent", False)), task=task)
