@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import datetime as dt
 import fcntl
+import gzip
 import hashlib
 import json
 import os
@@ -164,9 +165,16 @@ class Store:
             event["digest"] = hashlib.sha256(encoded(event)).hexdigest()
             path = self.root / "events" / event["at"][:10] / f"{seq:012d}-{event['id']}.json"
             atomic(path, encoded(event))
-            self._index(event, path)
-            self.index.apply(event)
-            self.db.commit()
+            self.db.execute("SAVEPOINT publish_index")
+            try:
+                self._index(event, path)
+                self.index.apply(event)
+                self.db.execute("RELEASE publish_index")
+                self.db.commit()
+            except BaseException:
+                self.db.execute("ROLLBACK TO publish_index")
+                self.db.execute("RELEASE publish_index")
+                raise
             return event
 
     def get(self, event_id):
@@ -204,7 +212,25 @@ class Store:
         digest = ref["sha256"]
         if not re.fullmatch(r"[a-f0-9]{64}", digest):
             raise ValueError("Invalid content digest")
-        data = (self.root / "objects" / digest).read_bytes()
+        path = self.root / "objects" / digest
+        if path.exists():
+            data = path.read_bytes()
+            if __import__('time').time() - path.stat().st_mtime > 3600:
+                os.utime(path, None)
+        else:
+            # Consult durable receipts directly: rebuilding the index must also
+            # work before archive.receipt rows have been projected.
+            receipts = []
+            for record in sorted((self.root / "events").glob("*/*.json")):
+                event = json.loads(record.read_bytes())
+                if event.get("kind") == "archive.receipt" and event["data"]["sha256"] == digest:
+                    receipts.append(event["data"])
+            if not receipts: raise FileNotFoundError("Missing original object: " + digest)
+            cold = Path(receipts[-1]["cold_path"])
+            from .storage import connected
+            if not connected(cold.parent):
+                raise FileNotFoundError("Original is archived; reconnect the recorded volume: " + str(cold))
+            data = gzip.decompress(cold.read_bytes())
         if hashlib.sha256(data).hexdigest() != digest:
             raise ValueError("Original object checksum mismatch")
         return data

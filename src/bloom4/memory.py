@@ -55,6 +55,7 @@ class Memory:
         for source in sources:
             self.store.get(source)
         with self.store.locked():
+            self.store.sync()
             if approval:
                 for event in self.store.events("memory.accepted", target=owner):
                     item = event["data"]

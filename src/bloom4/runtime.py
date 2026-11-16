@@ -31,6 +31,7 @@ class Runtime:
         self.auto_recall = auto_recall
         self.active = {}; self.steering = {}; self.queued_steers = set()
         self.stopping = False
+        self._archive_at = 0
 
     def tasks(self):
         return self.store.index.tasks()
@@ -390,6 +391,10 @@ class Runtime:
             self.recover(); began = time.monotonic()
             while not self.stopping and time.monotonic() - began < seconds:
                 self.ingest(); self.poll()
+                if time.monotonic() >= self._archive_at:
+                    from .storage import Archive
+                    Archive(self.store).due()
+                    self._archive_at = time.monotonic() + 3600
                 for agent, job in list(self.active.items()):
                     if job.done():
                         await job; del self.active[agent]

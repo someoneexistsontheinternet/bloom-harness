@@ -72,7 +72,15 @@ def main():
     reconcile = sub.add_parser("reconcile")
     reconcile.add_argument("call"); reconcile.add_argument("--reason", required=True)
     cancel = sub.add_parser("cancel-process"); cancel.add_argument("handle")
+    archive = sub.add_parser("archive")
+    archive.add_argument("--destination", type=Path)
+    archive.add_argument("--days", type=float, default=7)
+    backup = sub.add_parser("backup"); backup.add_argument("path", type=Path)
+    restore = sub.add_parser("restore"); restore.add_argument("path", type=Path); restore.add_argument("destination", type=Path)
     args = parser.parse_args()
+    if args.command == "restore":
+        from .storage import restore
+        print(json.dumps(restore(args.path, args.destination), indent=2)); return
     store = Store(args.workspace)
     try:
         match args.command:
@@ -104,6 +112,14 @@ def main():
                 result = budget.status()
             case "status": result = Runtime(store, None).status()
             case "usage": result = usage_report(store, args.task)
+            case "archive":
+                from .storage import Archive
+                archive = Archive(store)
+                if args.destination: archive.configure(args.destination, args.days)
+                result = archive.sweep()
+            case "backup":
+                from .storage import backup
+                result = backup(store, args.path)
             case "pause" | "resume":
                 task = Runtime(store, None).tasks().get(args.task)
                 if not task: raise ValueError("Unknown task")

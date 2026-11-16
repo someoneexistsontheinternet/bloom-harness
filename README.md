@@ -99,3 +99,24 @@ SQLite also provides relational `agent_index`, `task_index`, `call_index` and
 event files, rebuilt by `reindex`. A failed rebuild rolls back without destroying
 the previous searchable index. Status snapshots contain short objectives and
 references rather than repeated full helper inputs.
+
+## Cold storage and backups
+
+```sh
+# Destination must already exist on its intended mounted volume.
+.venv/bin/bloom4 archive --destination /path/to/existing/cold-directory
+.venv/bin/bloom4 backup /path/outside/workspace/conversation.zip
+.venv/bin/bloom4 restore /path/to/conversation.zip /path/to/new-workspace
+```
+
+Configured cold storage checks hourly while `run --watch`/`chat` is running.
+Payloads inactive for seven days receive verified gzip copies before local
+removal. Current owner contexts, accepted memory and unfinished work are pinned.
+Event files and SQLite/search remain local. Text search works with a disconnected
+volume; uncached source bytes need reconnection. A missing mount is never replaced
+with a new SSD directory. This prototype archives workspace payloads, not arbitrary
+project logs. No standalone service is installed.
+
+Backups require the runtime and detached processes to be settled. The ZIP includes
+registered cold originals and checks every member; restore requires a new directory,
+rebuilds indexes and never starts work. V3 data is not imported or reset.

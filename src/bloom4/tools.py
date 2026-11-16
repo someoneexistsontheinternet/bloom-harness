@@ -87,7 +87,7 @@ class Tools:
                       and e["data"]["path"] == str(path)]
             if write or not grants:
                 raise PermissionError("Path outside granted work directory: " + str(root))
-            if hashlib.sha256(path.read_bytes()).hexdigest() != grants[-1]["data"]["source"]["sha256"]:
+            if path.exists() and hashlib.sha256(path.read_bytes()).hexdigest() != grants[-1]["data"]["source"]["sha256"]:
                 raise ValueError("Saved result file changed; use its immutable source")
         return path
 
@@ -113,7 +113,11 @@ class Tools:
         match name:
             case "read_file":
                 path = self.path(agent, args["path"], task=task)
-                raw = path.read_bytes(); text = raw.decode()
+                if path.exists(): raw = path.read_bytes()
+                else:
+                    grant = next(e for e in reversed(self.store.events("result.saved")) if e["data"]["path"] == str(path))
+                    raw = self.store.read(grant["data"]["source"])
+                text = raw.decode()
                 source = self.store.put(raw)
                 self.store.append("source.saved", {"source": source, "path": str(path), "search_source": source},
                     actor=agent, target=self.owner(agent, task), task=task, dedup="source:" + agent + ":" + call_id)
