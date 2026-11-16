@@ -140,6 +140,14 @@ volume; uncached source bytes need reconnection. A missing mount is never replac
 with a new SSD directory. This prototype archives workspace payloads, not arbitrary
 project logs. No standalone service is installed.
 
+Large assignment bodies, native history items and tool outputs are object
+references in control-plane records. Their exact text is reconstructed for the
+model, so helper payloads do not get copied into every task/status record.
+Accepted memory points directly to its named Markdown revision. The approval
+event records its hash and sources; modifying that version without approval is
+detected. Draft a new file and publish a revision rather than editing an accepted
+version in place. SQLite indexes those source files; it does not own their text.
+
 Backups require the runtime and detached processes to be settled. The ZIP includes
 registered cold originals and checks every member; restore requires a new directory,
 rebuilds indexes and never starts work. V3 data is not imported or reset.

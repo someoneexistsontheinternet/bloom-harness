@@ -57,3 +57,17 @@ def test_backup_restores_files_index_and_history_without_execution(tmp_path):
     assert recovered.read(source) == b"cold original"
     assert Memory(recovered).get("astra", "L0", "style")["text"] == "A retained preference"
     with pytest.raises(FileExistsError): restore(dest, tmp_path / "restored")
+
+
+def test_large_history_is_referenced_once_and_current_context_stays_hot(tmp_path):
+    from bloom4.context import Context
+    store = Store(tmp_path / "workspace"); Agents(store).bootstrap()
+    context = Context(store); context.snapshot("astra")
+    text = "Exact long input " * 1000
+    event = context.append("astra", [{"role": "user", "content": text}])
+    assert "items" not in event["data"] and "items_ref" in event["data"]
+    assert context.items("astra")[-1]["content"] == text
+    ref = event["data"]["items_ref"]; os.utime(store.root / ref["path"], (1, 1))
+    cold = tmp_path / "cold"; cold.mkdir(); Archive(store).configure(cold)
+    Archive(store).sweep()
+    assert (store.root / ref["path"]).exists()

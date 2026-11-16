@@ -55,7 +55,7 @@ class Archive:
                 snapshots = self.store.events("context.snapshot", target=agent.id)
                 through = snapshots[-1]["data"]["through"] if snapshots else 0
                 for event in self.store.events(target=agent.id, after=through):
-                    if event["kind"] in ("context.snapshot", "model.completed", "model.started"):
+                    if event["kind"] in ("context.snapshot", "model.completed", "model.started", "history.added", "tool.completed"):
                         result.update(references(event["data"]))
         for task in self.store.index.tasks().values():
             if task["status"] != "completed":

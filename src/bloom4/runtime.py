@@ -42,7 +42,9 @@ class Runtime:
              origin="owner", input_event=None, evidence=None, read_owner=None):
         self.agents.get(agent)
         task = task or uid("task")
-        self.store.append("task.opened", {"message": message, "parent_task": parent_task,
+        prompt = self.store.put(message) if len(message) > 4096 else None
+        visible = message[:240] + " [full assignment retained]" if prompt else message
+        self.store.append("task.opened", {"message": visible, "prompt": prompt, "parent_task": parent_task,
             "purpose": purpose, "required": required, "origin": origin, "input_event": input_event,
             "evidence": evidence, "read_owner": read_owner}, actor=origin, target=agent, task=task,
             dedup="task:" + task)
@@ -77,6 +79,16 @@ class Runtime:
             self.agents.create(ident, "luna", "Extract grounded evidence for " + owner, parent=owner)
         return self.open(ident, message, task=ident, parent_task=parent_task, purpose=purpose,
                          required=required, origin=owner, evidence=evidence, read_owner=owner)
+
+    def question(self, task):
+        """Retain the complete assignment and consumed owner corrections for evidence readers."""
+        message = self.store.read(task["prompt"]).decode() if task.get("prompt") else task["message"]
+        updates = []
+        for receipt in self.store.events("input.consumed", target=task["agent"], task=task["id"]):
+            for source in receipt["data"]["events"]:
+                if source != task.get("input_event"):
+                    updates.append(self.store.get(source)["data"]["text"])
+        return message + ("\nOwner updates:\n" + "\n".join(updates) if updates else "")
 
     def dependencies(self, task):
         waiting = [t["id"] for t in self.tasks().values() if t.get("parent_task") == task and
@@ -283,7 +295,10 @@ class Runtime:
                     source = value["source"]
                     full = self.store.read(source).decode()
                     handle = "curator_" + hashlib.sha256((agent + call["call_id"]).encode()).hexdigest()[:24]
-                    message = ("Extract only evidence useful to this task: " + task["message"] +
+                    recent = [e for e in self.store.events("model.completed", target=agent, task=task_id) if e["data"].get("purpose") == "turn"][-3:]
+                    summaries = [{"source": e["id"], "text": public_text(json.loads(self.store.read(e["data"]["response"])))} for e in recent]
+                    message = ("Extract only evidence useful to this task: " + self.question(task) +
+                        "\nRecent public progress:\n" + json.dumps(summaries) +
                         "\nReturn JSON with status (complete, partial, unable), summary, and quotes (exact strings from the source). "
                         "Do not publish memory. Full original is retained at " + value["path"] + "\nSOURCE:\n" + full)
                     self.helper(agent, task_id, message, purpose="curation", evidence=value, required=True, ident=handle)
@@ -324,7 +339,7 @@ class Runtime:
                 if not self.store.events("task.opened", task="attention_" + task_id):
                     self.open("terra", "Assess this evidence for " + owner + ". Parent status: " + parent["status"] +
                         ". Stage ordinary supplements; wake only for material corrections or unresolved necessary work.\n" +
-                        json.dumps({"question": parent["message"], "evidence": data, "approved_preferences": preferences}),
+                        json.dumps({"question": self.question(parent), "evidence": data, "approved_preferences": preferences}),
                         task="attention_" + task_id, purpose="attention", origin="system", evidence=ev["id"], read_owner=owner,
                         parent_task=parent["id"])
         elif task["purpose"] == "attention":
@@ -358,7 +373,8 @@ class Runtime:
                 if task["input_event"]:
                     self.context.deliver(agent, [self.store.get(task["input_event"])])
                 else:
-                    self.context.append(agent, [{"role": "user", "content": task["message"]}], task=task_id,
+                    message = self.store.read(task["prompt"]).decode() if task.get("prompt") else task["message"]
+                    self.context.append(agent, [{"role": "user", "content": message}], task=task_id,
                                         dedup="task-context:" + task_id)
                 self.store.append("task.initialized", {}, target=agent, task=task_id, dedup="initialized:" + task_id)
             pending = self.mailbox.pending(agent)

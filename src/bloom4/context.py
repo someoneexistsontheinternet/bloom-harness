@@ -61,14 +61,16 @@ class Context:
         result = self.prefix(snapshot)
         for event in self.store.events(target=agent, after=snapshot["data"]["through"]):
             if event["kind"] == "history.added":
-                result.extend(event["data"]["items"])
+                result.extend(json.loads(self.store.read(event["data"]["items_ref"]))
+                              if event["data"].get("items_ref") else event["data"]["items"])
             elif event["kind"] == "model.completed" and event["data"].get("purpose", "turn") == "turn":
                 result.extend(json.loads(self.store.read(event["data"]["native_items"]))
                     if event["data"].get("native_items") else
                     json.loads(self.store.read(event["data"]["response"]))["output"])
             elif event["kind"] == "tool.completed":
                 result.append({"type": "function_call_output", "call_id": event["data"]["call_id"],
-                               "output": event["data"]["output"]})
+                               "output": self.store.read(event["data"]["output_ref"]).decode()
+                               if event["data"].get("output_ref") else event["data"]["output"]})
         return result
 
     def prefix(self, snapshot):
@@ -77,7 +79,11 @@ class Context:
         return json.loads(self.store.read(data["prefix_ref"])) if data.get("prefix_ref") else list(data["prefix"])
 
     def append(self, agent, items, *, task="", sources=(), dedup=None):
-        return self.store.append("history.added", {"items": items, "sources": list(sources)},
+        data = {"sources": list(sources)}
+        if len(encoded(items)) > 4096:
+            data["items_ref"] = self.store.put(encoded(items), "application/json")
+        else: data["items"] = items
+        return self.store.append("history.added", data,
                                  target=agent, task=task, dedup=dedup)
 
     def deliver(self, agent, inputs):
@@ -175,5 +181,6 @@ class Context:
         child = self.agents.create(name, identity.role, responsibility, parent=parent, seed=seed)
         self.snapshot(child.id)
         self.append(child.id, [{"role": "user", "content":
-            f"This is history fork {name}. Responsibility: {responsibility}. Your writable work directory is work/{name}."}])
+            f"Your runtime identity is now {name}, a separate history fork of {parent}. Responsibility: {responsibility}. "
+            f"Approve only your own private memory. Your writable work directory is work/{name}."}])
         return child

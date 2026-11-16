@@ -104,3 +104,14 @@ def test_forks_reference_shared_history_and_cannot_read_future_parent_memory(tmp
     from bloom4.tools import Tools
     assert not Tools(store).can_read_event("branch_a", store.get(future["event"]), None)
     assert not memory.search("branch_a", "future")
+
+
+def test_markdown_version_is_the_verified_memory_source(tmp_path):
+    store, memory, context = setup(tmp_path)
+    result = memory.publish("owner", "astra", "L0", "source", "Exact approved Markdown")
+    event = store.get(result["event"])
+    assert "text" not in event["data"]
+    assert result["source"]["path"] == result["file"]
+    (tmp_path / result["file"]).write_text("Unapproved edit")
+    with pytest.raises(ValueError, match="checksum"):
+        memory.get("astra", "L0", "source")

@@ -212,7 +212,8 @@ class Store:
         digest = ref["sha256"]
         if not re.fullmatch(r"[a-f0-9]{64}", digest):
             raise ValueError("Invalid content digest")
-        path = self.root / "objects" / digest
+        path = (self.root / ref.get("path", "objects/" + digest)).resolve()
+        if not path.is_relative_to(self.root): raise PermissionError("Source path escapes the workspace")
         if path.exists():
             data = path.read_bytes()
             if __import__('time').time() - path.stat().st_mtime > 3600:

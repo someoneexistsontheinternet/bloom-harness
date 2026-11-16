@@ -1,6 +1,7 @@
 """Versioned Markdown memory with exact-content approval and source references."""
 
 import json
+import hashlib
 
 from .agents import Agents
 from .store import Store, atomic, encoded, identifier
@@ -27,7 +28,7 @@ class Memory:
         for event in self.store.events("memory.accepted", target=owner):
             item = {**event["data"], "event": event["id"]}
             entries[(item["layer"], item["key"])] = item
-        return list(entries.values())
+        return [{**item, "text": self.store.read(item["source"]).decode()} for item in entries.values()]
 
     def get(self, owner, layer, key):
         return next((e for e in self.entries(owner) if (e["layer"], e["key"]) == (layer, key)), None)
@@ -63,24 +64,26 @@ class Memory:
             if approval:
                 for event in self.store.events("memory.accepted", target=owner):
                     item = event["data"]
-                    if (item.get("approval"), item["layer"], item["key"], item["text"], item["revision"]) == (approval, layer, key, text, expected + 1):
-                        return {**item, "event": event["id"]}
+                    original = self.store.read(item["source"]).decode()
+                    if (item.get("approval"), item["layer"], item["key"], original, item["revision"]) == (approval, layer, key, text, expected + 1):
+                        return {**item, "text": original, "event": event["id"]}
             old = self.get(owner, layer, key)
             revision = old["revision"] if old else 0
             if expected != revision:
                 raise ValueError(f"Memory revision conflict: expected {expected}, actual {revision}")
-            ref = self.store.put(text, "text/markdown")
             # The named immutable Markdown is independently readable. Events retain
             # the exact hash, source IDs, author and approval required for reconstruction.
             path = self.store.root / "agents" / owner / "memory" / layer / key / f"{revision + 1:06d}.md"
             if path.exists() and path.read_bytes() != text.encode():
                 raise ValueError("Uncommitted memory revision collision; inspect before replacing")
             atomic(path, text.encode())
+            ref = {"sha256": hashlib.sha256(text.encode()).hexdigest(), "path": str(path.relative_to(self.store.root)),
+                   "bytes": len(text.encode()), "media": "text/markdown"}
             data = dict(layer=layer, key=key, revision=revision + 1, source=ref,
                         file=str(path.relative_to(self.store.root)), sources=list(sources),
-                        approval=approval, text=text)
+                        approval=approval, search_source=ref)
             event = self.store.append("memory.accepted", data, actor=actor, target=owner)
-            return {**data, "event": event["id"]}
+            return {**data, "text": text, "event": event["id"]}
 
     def packet(self, owner):
         """Return all accepted active layers; never discard an L1 obligation to fit a cap."""
@@ -99,6 +102,8 @@ class Memory:
     def search(self, owner, query):
         allowed = {owner, "shared"}
         inherited = set((self.agents.get(owner).seed or {}).get("sources", []))
-        return [e for e in self.store.search(query, limit=100)
+        events = [e for e in self.store.search(query, limit=100)
                 if (e["target"] in allowed or e["id"] in inherited) and e["kind"] in
                 ("memory.accepted", "input.received", "answer", "timeline.entry", "source.saved")]
+        return [{**e, "preview": self.store.read(e["data"]["source"]).decode(), "view": "accepted-memory preview"}
+                if e["kind"] == "memory.accepted" else e for e in events]

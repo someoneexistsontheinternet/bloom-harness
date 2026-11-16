@@ -107,7 +107,7 @@ class Tools:
         args = json.loads(call["arguments"])
         prior = [e for e in self.store.events("tool.completed", target=agent) if e["data"]["call_id"] == call_id]
         if prior:
-            return json.loads(prior[-1]["data"]["output"])
+            return self.output_value(prior[-1])
         if name not in {t["name"] for t in definitions(self.agents.get(agent).role)}:
             raise PermissionError("Tool is not available to this role")
         intents = [e for e in self.store.events("tool.intent", target=agent) if e["data"]["call_id"] == call_id]
@@ -203,7 +203,12 @@ class Tools:
             case _:
                 raise ValueError("This coordination tool is handled by the runtime")
         receipt = self.finish(agent, task, call_id, value, exact=name == "read_file" and args.get("exact", False))
-        return json.loads(receipt["data"]["output"])
+        return self.output_value(receipt)
+
+    def output_value(self, receipt):
+        """Resolve original large results without embedding them in control-plane records."""
+        data = receipt["data"]
+        return json.loads(self.store.read(data["output_ref"])) if data.get("output_ref") else json.loads(data["output"])
 
     def present(self, agent, task, call_id, value, exact=False):
         """One large-output policy for all tool paths; exact originals remain files."""
@@ -228,7 +233,10 @@ class Tools:
     def finish(self, agent, task, call_id, value, *, exact=False):
         value = self.present(agent, task, call_id, value, exact)
         output = json.dumps(value, ensure_ascii=False)
-        return self.store.append("tool.completed", {"call_id": call_id, "output": output},
+        data = {"call_id": call_id}
+        if len(output) > 4096: data["output_ref"] = self.store.put(output, "application/json")
+        else: data["output"] = output
+        return self.store.append("tool.completed", data,
             actor=agent, target=agent, task=task, dedup="tool-result:" + agent + ":" + call_id)
 
     def process_status(self, handle, agent=None):
