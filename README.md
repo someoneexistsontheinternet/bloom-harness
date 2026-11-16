@@ -4,6 +4,9 @@ A fresh Python, CLI-first experiment. The `experimental/v4-cli` branch replaces
 the application tree; public v3 history remains on `main`. No v3 runtime data
 is imported. This is not a deployed service.
 
+The initial bounded live checks passed; [validation and scope](docs/validation.md)
+distinguish actual provider checks from offline tests and remaining work.
+
 **Commit every coherent feature after testing it.** Update this README with
 what works and what remains unverified. Record defects in `docs/teething.md`.
 Do not hide a large rewrite behind one final commit.
@@ -99,6 +102,8 @@ retrieval is supplementary: Terra can stage a reference appendix or request a
 material follow-up. Empty history skips automatic recall. No model calls are
 bought for unchanged polling. `--no-auto-recall` disables the optional initial
 lookup. Tool-produced text over 50k is retained and curated; Luna is exempt.
+Material controller corrections are rechecked before unstarted effects and final
+delivery, including recovery; ordinary appendices do not force another turn.
 
 ```sh
 .venv/bin/bloom4 pause TASK_ID

@@ -9,7 +9,7 @@ or production migration. Those interfaces will use the core contracts later.
 
 ## Reproduced and fixed during the first implementation
 
-Four explicit fault-injection tests failed on the initial implementation:
+Five explicit fault-injection tests failed during implementation:
 
 | Failure | Cause | Fix / regression |
 |---|---|---|
@@ -17,6 +17,7 @@ Four explicit fault-injection tests failed on the initial implementation:
 | Urgent HTTP update still allowed an obsolete write | New input was checked only after dispatching returned tools | Ingest/check urgent inputs before effects; preserve native calls with explicit not-executed results and then reconsider |
 | Null usage crashed budget accounting | Missing keys were handled, present JSON nulls were not | Unknown usage keeps the conservative reservation and stays visibly unknown |
 | Evidence arriving during compaction disappeared from the next context | The compaction cutoff was taken at completion, including material the summarizer never saw | Freeze exact input membership and cutoff before inference; append later evidence after the new summary |
+| A material Terra correction arriving during generation was ignored | Owner completion overwrote the controller wake before its appendix was delivered | Recheck undelivered material evidence before dispatch/delivery and during recovery; stage-only notes still avoid extra calls |
 
 The regressions live in `tests/test_failure_boundaries.py`. These were local
 synthetic fault tests, not failures in a production deployment.
@@ -30,8 +31,13 @@ synthetic fault tests, not failures in a production deployment.
 - Commands are opt-in and not an OS sandbox. File-tool scope checks do not
   restrict arbitrary commands launched by a trusted persistent owner.
 - The first live implementation used six calls: Astra delegated, Sol performed
-  an environment check, wrote the file, ran the assertion, reported, then Astra
+  an existing-file check, wrote the file, ran the assertion, reported, then Astra
   replied. No paid polling occurred, but the model still serialized prepared
   work instead of batching every possible operation.
 - A small arithmetic example does not establish long-running autonomous quality,
   memory quality after repeated compactions, or production readiness.
+- All small live probes reported zero cached tokens. Exact-prefix preservation
+  is verified, but actual cache-hit benefits remain unmeasured.
+
+See [the validation record](validation.md) for the frozen code versions, actual
+per-model usage and the scope intentionally left outside the first CLI cut.
