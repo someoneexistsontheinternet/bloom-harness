@@ -49,7 +49,7 @@ class Index:
             self.db.execute("INSERT INTO task_index VALUES(?,?,?,?,?,?,?,?,?,?,?)", (
                 event["task"], event["target"], data["parent_task"], data["purpose"], "ready",
                 data["required"], data["origin"], event["id"], event["seq"], event["seq"], json.dumps(data)))
-        elif kind in ("task.ready", "task.waiting", "task.completed", "task.blocked", "task.paused"):
+        elif kind in ("task.ready", "task.waiting", "task.completed", "task.failed", "task.blocked", "task.paused"):
             row = self.db.execute("SELECT metadata FROM task_index WHERE id=?", (event["task"],)).fetchone()
             if row:
                 metadata = {**json.loads(row[0]), **data}

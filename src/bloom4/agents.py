@@ -7,10 +7,10 @@ from .store import Store, atomic, encoded, identifier
 
 
 PROFILES = {
-    "astra": {"model": "gpt-6-astra", "effort": "high", "compact_at": 400_000, "target": 100_000},
-    "sol": {"model": "gpt-6.1-sol", "effort": "high", "compact_at": 400_000, "target": 100_000},
+    "astra": {"model": "gpt-6-astra", "effort": "max", "compact_at": 400_000, "target": 100_000},
+    "sol": {"model": "gpt-6.1-sol", "effort": "xhigh", "compact_at": 400_000, "target": 100_000},
     "terra": {"model": "gpt-6.1-terra", "effort": "medium", "compact_at": 20_000, "target": 10_000},
-    "luna": {"model": "gpt-6-luna", "effort": "medium", "compact_at": 512_000, "target": 256_000},
+    "luna": {"model": "gpt-6-luna", "effort": "max", "compact_at": 512_000, "target": 256_000},
 }
 
 

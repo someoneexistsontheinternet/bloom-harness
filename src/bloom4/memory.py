@@ -82,6 +82,16 @@ class Memory:
         """Return all accepted active layers; never discard an L1 obligation to fit a cap."""
         return [{"owner": scope, **entry} for scope in ("shared", owner) for entry in self.entries(scope)]
 
+    def working_packet(self, owner):
+        """Keep L0/L1 exact; L2 is a searchable history index, not perpetual prompt ballast."""
+        entries = self.packet(owner)
+        active = [e for e in entries if e["layer"] in ("L0", "L1")]
+        historical = [e for e in entries if e["layer"] == "L2"]
+        if historical:
+            active.append({"layer": "L2", "historical_entries": len(historical),
+                           "retrieve": "memory_search / memory_get", "note": "Historical originals remain available; not selected in full."})
+        return active
+
     def search(self, owner, query):
         allowed = {owner, "shared"}
         return [e for e in self.store.search(query, limit=100)

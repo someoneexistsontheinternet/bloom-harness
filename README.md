@@ -32,6 +32,8 @@ contexts adopt new accepted memory only at compaction. Settled history can fork
 without modifying its parent. Terra targets 10k working tokens and compacts at
 20k; Astra/Sol use 100k/400k, Luna 256k/512k. All model windows remain configured
 to 1M; these working policies are separate from model capacity.
+Default efforts are Astra max, Sol xhigh, Terra medium and Luna max. Sent
+contracts remain pinned; updated tools/profiles enter at compaction.
 
 ```sh
 .venv/bin/bloom4 agent create builder --role sol --responsibility 'Maintain the demo project'
@@ -93,6 +95,17 @@ lookup. Tool-produced text over 50k is retained and curated; Luna is exempt.
 Pause prevents new effects; already running commands need explicit cancellation.
 Reconciliation records abandonment of a model purchase, not fabricated success.
 Compaction uses the owning model and preserves originals and exact active L1.
+The frozen working packet contains L0/L1 and an L2 retrieval index, not every
+historical lesson in full. Explicit memory reads can append newer accepted
+revisions. Token estimates include known reasoning usage without counting
+encrypted serialization length; provider usage remains authoritative.
+
+Owners can compact after 20 minutes without owner input only when their
+uncompressed tail exceeds 100k. Incoming input preempts idle maintenance.
+Failed optional compaction keeps the old context and is deferred for that
+snapshot; uncertain compaction purchases need explicit reconciliation before
+another attempt. A failed Luna curator returns an honest failure appendix and
+the original reference rather than permanently blocking the owner.
 
 SQLite also provides relational `agent_index`, `task_index`, `call_index` and
 `memory_index` tables for joins and monitoring. They are projections of the

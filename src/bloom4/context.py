@@ -48,9 +48,10 @@ class Context:
                         "profile": PROFILES[identity.role], "window": 1_000_000}
             prefix = [{"role": "user", "content": f"Runtime identity: {agent}; role: {identity.role}. Responsibility: {identity.responsibility}. "
                        f"Your work directory is {self.agents.scope(agent)}.\nAccepted memory snapshot:\n" +
-                       json.dumps(self.memory.packet(agent), ensure_ascii=False)}]
+                       json.dumps(self.memory.working_packet(agent), ensure_ascii=False)}]
         return self.store.append("context.snapshot", {"contract": contract, "prefix": prefix,
-            "through": 0, "memory_events": [e["event"] for e in self.memory.packet(agent)]}, target=agent)
+            "through": 0, "reasoning_seed": (identity.seed or {}).get("reasoning_tokens", 0),
+            "memory_events": [e["event"] for e in self.memory.packet(agent)]}, target=agent)
 
     def items(self, agent, tools=()):
         snapshot = self.snapshot(agent, tools)
@@ -94,9 +95,24 @@ class Context:
                 "tools": contract["tools"], "input": items, "store": False, "stream": True,
                 "reasoning": {"effort": contract["profile"]["effort"], "summary": "auto"},
                 "include": ["reasoning.encrypted_content"], "parallel_tool_calls": True}
-        if estimate(body) > contract["window"] - 32768:
+        if self.tokens(agent, body) > contract["window"] - 32768:
             raise ValueError("Context exceeds configured 1M window; explicit compaction required")
         return body
+
+    def tokens(self, agent, body):
+        """Estimate visible text plus known reasoning tokens; never count ciphertext bytes."""
+        snapshot = self.snapshot(agent)["data"]
+        total = estimate(body) + snapshot.get("reasoning_seed", 0)
+        for event in self.store.events("model.completed", target=agent, after=snapshot["through"]):
+            if event["data"].get("purpose", "turn") in ("turn", "continuation_part"):
+                usage = event["data"].get("usage") or {}
+                total += (usage.get("output_tokens_details") or {}).get("reasoning_tokens") or 0
+        return total
+
+    def tail_tokens(self, agent):
+        """Measure uncompressed native history separately from the frozen memory prefix."""
+        prefix = self.snapshot(agent)["data"]["prefix"]
+        return self.tokens(agent, self.items(agent)[len(prefix):])
 
     def compact(self, agent, summary, *, approval=None, actor=None, through=None, source_items=None):
         """Adopt a source-linked working summary; preserve exact history and active memory."""
@@ -122,11 +138,15 @@ class Context:
             actor=actor or agent, target=agent)
         # The L1 packet is exact even if a summary forgets it. Runtime obligations
         # remain independently journaled and do not depend on a model's prose.
-        prefix = [{"role": "user", "content": "Accepted memory snapshot:\n" +
-                   json.dumps(self.memory.packet(agent), ensure_ascii=False)},
+        prefix = [{"role": "user", "content": f"Runtime identity: {agent}; role: {identity.role}. Responsibility: {identity.responsibility}. "
+                   f"Your work directory is {self.agents.scope(agent)}.\nAccepted memory snapshot:\n" +
+                   json.dumps(self.memory.working_packet(agent), ensure_ascii=False)},
                   {"role": "user", "content": "Working timeline:\n" + summary +
                    "\nExact history: " + timeline["id"]}]
-        return self.store.append("context.snapshot", {"contract": old["data"]["contract"],
+        from .tools import definitions
+        contract = {"instructions": INSTRUCTIONS, "tools": definitions(identity.role),
+                    "profile": PROFILES[identity.role], "window": 1_000_000}
+        return self.store.append("context.snapshot", {"contract": contract,
             "prefix": prefix, "through": through, "timeline": timeline["id"],
             "memory_events": [e["event"] for e in self.memory.packet(agent)]}, target=agent)
 
@@ -137,7 +157,8 @@ class Context:
         identity = self.agents.get(parent)
         seed = {"contract": self.snapshot(parent)["data"]["contract"],
                 "items": self.items(parent), "memories": self.memory.entries(parent),
-                "parent_snapshot": self.snapshot(parent)["id"]}
+                "parent_snapshot": self.snapshot(parent)["id"],
+                "reasoning_tokens": max(0, self.tokens(parent, self.items(parent)) - estimate(self.items(parent)))}
         child = self.agents.create(name, identity.role, responsibility, parent=parent, seed=seed)
         self.snapshot(child.id)
         self.append(child.id, [{"role": "user", "content":

@@ -69,3 +69,22 @@ def test_model_approval_binds_exact_memory_content(tmp_path):
     with pytest.raises(ValueError, match="exact"):
         memory.publish("astra", "astra", "L0", "style", "Fabricated", approval=approval["id"])
     assert memory.publish("astra", "astra", "L0", "style", "Concise", approval=approval["id"])["text"] == "Concise"
+
+
+def test_l2_history_does_not_become_permanent_prompt_ballast(tmp_path):
+    store, memory, context = setup(tmp_path)
+    memory.publish("owner", "astra", "L2", "old", "HISTORICAL_MARKER " * 1000)
+    request = context.request("astra")
+    assert "HISTORICAL_MARKER" not in json.dumps(request)
+    assert memory.search("astra", "HISTORICAL_MARKER")
+    assert memory.get("astra", "L2", "old")["revision"] == 1
+
+
+def test_known_reasoning_usage_counts_without_ciphertext_length(tmp_path):
+    store, memory, context = setup(tmp_path)
+    context.snapshot("astra")
+    response = {"output": [{"type": "reasoning", "id": "reason", "encrypted_content": "x" * 90000}]}
+    store.append("model.completed", {"response": store.put(encoded(response)), "purpose": "turn", "usage": {"output_tokens_details": {"reasoning_tokens": 100}}}, target="astra")
+    body = context.request("astra")
+    from bloom4.context import estimate
+    assert context.tokens("astra", body) == estimate(body) + 100

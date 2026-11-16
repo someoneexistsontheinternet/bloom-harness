@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import datetime as dt
 import fcntl
 import hashlib
 import json
@@ -21,7 +22,7 @@ from .tools import Tools, definitions
 class Runtime:
     """Wake on changed evidence, preserve effects, and never buy inference for polling."""
 
-    def __init__(self, store: Store, provider, *, allow_processes=False, output=None, auto_recall=True):
+    def __init__(self, store: Store, provider, *, allow_processes=False, output=None, auto_recall=True, idle_seconds=1200):
         self.store, self.provider = store, provider
         self.agents = Agents(store); self.agents.bootstrap()
         self.context = Context(store); self.memory = Memory(store)
@@ -29,6 +30,7 @@ class Runtime:
         self.tools = Tools(store, allow_processes=allow_processes)
         self.output = output or (lambda agent, text: None)
         self.auto_recall = auto_recall
+        self.idle_seconds = idle_seconds
         self.active = {}; self.steering = {}; self.queued_steers = set()
         self.stopping = False
         self._archive_at = 0
@@ -78,10 +80,10 @@ class Runtime:
 
     def dependencies(self, task):
         waiting = [t["id"] for t in self.tasks().values() if t.get("parent_task") == task and
-                   t.get("required") and t["status"] != "completed"]
+                   t.get("required") and t["status"] not in ("completed", "failed")]
         for event in self.store.events("dependency.task", task=task):
             child = self.tasks().get(event["data"]["handle"])
-            if child and child["status"] != "completed": waiting.append(child["id"])
+            if child and child["status"] not in ("completed", "failed"): waiting.append(child["id"])
         for ev in self.store.events("dependency.process", task=task):
             state = self.tools.process_status(ev["data"]["handle"])
             if state["status"] not in ("completed", "failed"):
@@ -175,6 +177,11 @@ class Runtime:
 
     async def compact(self, agent, task):
         """Owning-model working compaction; no Luna permanent-memory authoring."""
+        abandoned = {e["data"]["call"] for e in self.store.events("model.abandoned", target=agent)}
+        for failure in self.store.events("model.failed", target=agent):
+            started = self.store.get(failure["data"]["call"])
+            if started["data"]["purpose"] == "compact" and failure["data"].get("uncertain") and started["id"] not in abandoned:
+                raise RuntimeError("Reconcile the prior uncertain compaction before purchasing another")
         role = self.agents.get(agent).role
         request = self.context.request(agent, definitions(role))
         original_items = request["input"]
@@ -277,6 +284,8 @@ class Runtime:
                     original = self.store.read(task["evidence"]["source"]).decode()
                     if report["status"] not in ("complete", "partial", "unable") or not isinstance(report["summary"], str):
                         raise ValueError("Invalid curation report")
+                    if estimate(report) > 6000:
+                        raise ValueError("Curation report exceeds the compact evidence target")
                     if any(not isinstance(q, str) or q not in original for q in report.get("quotes", [])):
                         raise ValueError("Curation quote does not match original")
                     data.update(report)
@@ -320,6 +329,10 @@ class Runtime:
         try:
             role = self.agents.get(agent).role
             self.context.snapshot(agent, definitions(role))
+            if task["purpose"] == "maintenance":
+                await self.compact(agent, task_id)
+                self.store.append("task.completed", {"operation": "idle working compaction"}, target=agent, task=task_id)
+                return
             if not self.store.events("task.initialized", task=task_id):
                 if task["input_event"]:
                     self.context.deliver(agent, [self.store.get(task["input_event"])])
@@ -356,7 +369,7 @@ class Runtime:
             request = self.context.request(agent, definitions(role))
             snapshot_id = self.context.snapshot(agent)["id"]
             deferred = any(e["data"]["snapshot"] == snapshot_id for e in self.store.events("compaction.deferred", target=agent))
-            if estimate(request) > PROFILES[role]["compact_at"] and not deferred:
+            if self.context.tokens(agent, request) > PROFILES[role]["compact_at"] and not deferred:
                 try:
                     await self.compact(agent, task_id)
                 except (Exception,) as exc:
@@ -394,8 +407,39 @@ class Runtime:
                 else:
                     self.complete(task, response, completed["id"])
         except (Exception, asyncio.CancelledError) as exc:
-            self.store.append("task.blocked", {"error": type(exc).__name__ + ": " + str(exc)}, target=agent, task=task_id)
+            error = type(exc).__name__ + ": " + str(exc)
+            if task["purpose"] in ("retrieval", "curation"):
+                parent = self.tasks().get(task["parent_task"])
+                if parent:
+                    data = {"status": "unable", "summary": "Background evidence failed: " + error,
+                            "sources": [task["opened"]]}
+                    if task["purpose"] == "curation":
+                        data.update(source=task["evidence"]["source"]["sha256"], path=task["evidence"]["path"])
+                        self.store.append("curation.result", data, actor=agent, target=parent["agent"], task=parent["id"])
+                    self.store.append("appendix.staged", data, actor=agent, target=parent["agent"], task=parent["id"])
+                self.store.append("task.failed", {"error": error}, target=agent, task=task_id)
+            elif task["purpose"] == "maintenance":
+                self.store.append("compaction.deferred", {"snapshot": self.context.snapshot(agent)["id"], "error": error}, target=agent, task=task_id)
+                self.store.append("task.failed", {"error": error}, target=agent, task=task_id)
+            else:
+                self.store.append("task.blocked", {"error": error}, target=agent, task=task_id)
             if isinstance(exc, asyncio.CancelledError): raise
+
+    def idle_maintenance(self):
+        """Create one owning compaction only after 20 quiet minutes and >100k tail tokens."""
+        if self.provider is None or self.active or any(t["status"] not in ("completed", "failed") for t in self.tasks().values()):
+            return
+        inputs = self.store.events("input.received")
+        if not inputs or time.time() - dt.datetime.fromisoformat(inputs[-1]["at"]).timestamp() < self.idle_seconds:
+            return
+        for agent in self.agents.all():
+            if not agent.writer or self.mailbox.pending(agent.id): continue
+            snapshots = self.store.events("context.snapshot", target=agent.id)
+            if not snapshots: continue
+            if any(e["data"]["snapshot"] == snapshots[-1]["id"] for e in self.store.events("compaction.deferred", target=agent.id)): continue
+            if self.context.tail_tokens(agent.id) > 100_000 and not self.context.pending_calls(agent.id):
+                self.open(agent.id, "Automatic working compaction after idle threshold", purpose="maintenance", origin="timer")
+                break
 
     def recover(self):
         finished = {e["data"]["call"] for kind in ("model.completed", "model.failed", "model.abandoned")
@@ -416,13 +460,19 @@ class Runtime:
             self.recover(); began = time.monotonic()
             while not self.stopping and time.monotonic() - began < seconds:
                 self.ingest(); self.poll()
+                for agent, job in list(self.active.items()):
+                    maintenance = next((t for t in self.tasks().values() if t["agent"] == agent and
+                                       t["purpose"] == "maintenance" and t["status"] == "ready"), None)
+                    if maintenance and self.mailbox.pending(agent): job.cancel()
                 if time.monotonic() >= self._archive_at:
                     from .storage import Archive
                     Archive(self.store).due()
                     self._archive_at = time.monotonic() + 3600
                 for agent, job in list(self.active.items()):
                     if job.done():
-                        await job; del self.active[agent]
+                        with contextlib.suppress(asyncio.CancelledError): await job
+                        del self.active[agent]
+                self.idle_maintenance()
                 tasks = self.tasks()
                 for task in tasks.values():
                     if len(self.active) >= 4: break
