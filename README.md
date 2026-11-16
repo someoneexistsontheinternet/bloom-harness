@@ -105,6 +105,14 @@ lookup. Tool-produced text over 50k is retained and curated; Luna is exempt.
 Material controller corrections are rechecked before unstarted effects and final
 delivery, including recovery; ordinary appendices do not force another turn.
 
+Background producers can use `bloom4 observe 'New evidence' --to astra --id UNIQUE_ID`
+or publish an inbox JSON/TOML with `kind = "observation"`. Optional `--task` and
+`--source EVENT_ID` retain attribution. Each observation goes through Terra before
+any owner wake. Direct owner messages bypass this gate. Reusing the same ID/content
+does not buy another review. The CLI must be running to process the inbox.
+Terra cannot bypass a paused or blocked task; those corrections remain pending
+for explicit recovery.
+
 ```sh
 .venv/bin/bloom4 pause TASK_ID
 .venv/bin/bloom4 resume TASK_ID
@@ -169,3 +177,17 @@ version in place. SQLite indexes those source files; it does not own their text.
 Backups require the runtime and detached processes to be settled. The ZIP includes
 registered cold originals and checks every member; restore requires a new directory,
 rebuilds indexes and never starts work. V3 data is not imported or reset.
+
+## Verification and current boundaries
+
+GitHub Actions runs the offline tests, formatting, package builds and a bounded
+publication scan; it never invokes a live model. The separate live evaluation
+recorded twelve requests across five small checks. See
+[validation](docs/validation.md) for exact scope and token usage.
+
+This cut sends direct owner messages to their owner immediately. Background
+observations and optional retrieval reports go through Terra. Required Sol
+reports and terminal process receipts resume waiting owners directly. Partial
+process-output monitoring and Terra review of implementation quality are still
+follow-up work; there is no general autonomous project scheduler. CLI streamed
+text is provisional; durable `answer` events identify settled replies.

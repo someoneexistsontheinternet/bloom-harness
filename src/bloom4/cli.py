@@ -27,6 +27,12 @@ def main():
     post.add_argument("--to", default="astra")
     post.add_argument("--urgent", action="store_true")
     post.add_argument("--id")
+    observe = sub.add_parser("observe")
+    observe.add_argument("text")
+    observe.add_argument("--to", default="astra")
+    observe.add_argument("--task")
+    observe.add_argument("--id")
+    observe.add_argument("--source", action="append", default=[])
     sub.add_parser("ingest")
     timeline = sub.add_parser("timeline")
     timeline.add_argument("--agent")
@@ -116,6 +122,15 @@ def main():
                 )
             case "ingest":
                 result = Mailbox(store).ingest()
+            case "observe":
+                result = Mailbox(store).post(
+                    args.text,
+                    args.to,
+                    request_id=args.id,
+                    task=args.task,
+                    kind="observation",
+                    sources=args.source,
+                )
             case "timeline":
                 if args.limit < 1:
                     parser.error("--limit must be positive")

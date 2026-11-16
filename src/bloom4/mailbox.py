@@ -13,11 +13,27 @@ class Mailbox:
     def __init__(self, store: Store):
         self.store = store
 
-    def post(self, text, target="astra", *, urgent=False, request_id=None, task=None):
+    def post(
+        self,
+        text,
+        target="astra",
+        *,
+        urgent=False,
+        request_id=None,
+        task=None,
+        kind="message",
+        sources=None,
+    ):
         identifier(target)
         request_id = identifier(request_id or uid("input"))
         envelope = dict(
-            id=request_id, target=target, text=text, urgent=urgent, task=task or request_id
+            id=request_id,
+            target=target,
+            text=text,
+            urgent=urgent,
+            task=task or request_id,
+            kind=kind,
+            sources=list(sources or []),
         )
         path = self.store.root / "inbox" / target / (request_id + ".json")
         if path.exists() and path.read_bytes() != encoded(envelope):
@@ -47,13 +63,29 @@ class Mailbox:
                         raise ValueError("Input target/text mismatch")
                     if type(data.get("urgent", False)) is not bool:
                         raise ValueError("urgent must be a Boolean")
+                    kind = data.get("kind", "message")
+                    if kind not in ("message", "observation"):
+                        raise ValueError("Input kind must be message or observation")
+                    sources = data.get("sources", [])
+                    if not isinstance(sources, list) or any(
+                        not isinstance(x, str) for x in sources
+                    ):
+                        raise ValueError("sources must be event IDs")
+                    for source in sources:
+                        self.store.get(source)
                     task = identifier(data.get("task", data["id"]))
+                    if kind == "observation":
+                        existing = self.store.index.tasks().get(task)
+                        if existing and existing["agent"] != data["target"]:
+                            raise ValueError("Observation task belongs to a different owner")
                     envelope = dict(
                         id=data["id"],
                         target=data["target"],
                         text=data["text"],
                         urgent=bool(data.get("urgent", False)),
                         task=task,
+                        kind=kind,
+                        sources=sources,
                     )
                     ev = self.store.append(
                         "input.received",
@@ -75,14 +107,16 @@ class Mailbox:
                     path.replace(self.store.root / "quarantine" / (uid("bad") + path.suffix))
         return accepted
 
-    def pending(self, target):
+    def pending(self, target, kind="message"):
         consumed = {
             x
             for e in self.store.events("input.consumed", target=target)
             for x in e["data"]["events"]
         }
         return [
-            e for e in self.store.events("input.received", target=target) if e["id"] not in consumed
+            e
+            for e in self.store.events("input.received", target=target)
+            if e["id"] not in consumed and e["data"].get("kind", "message") == kind
         ]
 
     def consume(self, target, event_ids, task=""):
