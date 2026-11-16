@@ -24,3 +24,20 @@ Inbox files are authoring inputs, not executable scripts. See
 Runtime state, local credentials, logs and development checkpoints are ignored.
 The experiment has no Discord or HTTP gateway. Model execution is added behind
 an explicit budget; ordinary tests use synthetic providers.
+
+Persistent identities now have explicit responsibilities and isolated work
+directories. Accepted L0–L2 memory revisions are real Markdown files with
+immutable approval/source records; L3 is the original event history. Frozen
+contexts adopt new accepted memory only at compaction. Settled history can fork
+without modifying its parent. Terra targets 10k working tokens and compacts at
+20k; Astra/Sol use 100k/400k, Luna 256k/512k. All model windows remain configured
+to 1M; these working policies are separate from model capacity.
+
+```sh
+.venv/bin/bloom4 agent create builder --role sol --responsibility 'Maintain the demo project'
+.venv/bin/bloom4 agent list
+.venv/bin/bloom4 memory show --agent astra
+# Owner approval of exact Markdown; subsequent edits require --expected REVISION.
+.venv/bin/bloom4 memory publish --agent astra --layer L0 --key style --file style.md
+.venv/bin/bloom4 agent fork alternate --from-agent astra --responsibility 'Explore another approach'
+```
