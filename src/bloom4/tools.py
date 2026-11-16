@@ -41,6 +41,8 @@ def definitions(role):
     ]
     if role in ("astra", "sol"):
         result += [
+            function("fork_agent", "Fork your model-decision input into an isolated persistent branch with private memory. The common history is referenced once; branch work cannot rewrite the parent. Use multiple forks in one response for alternative approaches. The parent waits for reports; no automatic winning-history adoption.",
+                     {"agent": STRING, "responsibility": STRING, "message": STRING}, ["agent", "responsibility", "message"]),
             function("write_file", "Write maintained work in your own work directory. Supply an intent explaining purpose; the executor saves it before writing in this same call. Existing files require the SHA256 from a read. Astra should delegate substantial implementation to a persistent Sol owner.",
                      {"path": STRING, "text": STRING, "intent": STRING, "expected_sha256": STRING}, ["path", "text", "intent"]),
             function("run_process", "Launch an argv command in your work directory; requires operator --allow-processes. Returns a durable handle. Commands are NOT an OS sandbox. This records your intent and launches together; do not spend a separate turn writing control files. Use wait for completion.",
@@ -93,6 +95,11 @@ class Tools:
                 raise ValueError("Saved result file changed; use its immutable source")
         return path
 
+    def can_read_event(self, agent, event, task):
+        """Permit own/granted evidence and an immutable fork's inherited source IDs."""
+        inherited = set((self.agents.get(agent).seed or {}).get("sources", []))
+        return event["target"] in (agent, self.owner(agent, task), "shared") or event["id"] in inherited
+
     def execute(self, agent, task, call, approval):
         """Return a native tool output; recovered writes reuse evidence instead of rerunning."""
         self.store.sync()
@@ -140,15 +147,15 @@ class Tools:
                         raise ValueError("Large exact read requires an unable curation receipt for this source")
             case "read_event":
                 value = self.store.get(args["event_id"])
-                if value["target"] not in (agent, self.owner(agent, task), "shared"):
+                if not self.can_read_event(agent, value, task):
                     raise PermissionError("Event outside this reader's grant")
             case "read_source":
                 event = self.store.get(args["event_id"])
-                if event["target"] not in (agent, self.owner(agent, task), "shared"):
+                if not self.can_read_event(agent, event, task):
                     raise PermissionError("Source outside this reader's grant")
                 field = args.get("field", "source")
-                if field not in ("source", "stdout_source", "stderr_source"):
-                    raise ValueError("Select source, stdout_source or stderr_source")
+                if field not in ("source", "stdout_source", "stderr_source", "request", "response"):
+                    raise ValueError("Select source, stdout_source, stderr_source, request or response")
                 ref = event["data"][field]
                 text = self.store.read(ref).decode()
                 lines = text.splitlines(keepends=True)
@@ -206,10 +213,13 @@ class Tools:
         full_ref = self.store.put(raw, "application/json")
         source_bytes = value["text"].encode() if isinstance(value, dict) and isinstance(value.get("text"), str) else raw
         ref = self.store.put(source_bytes)
-        name = hashlib.sha256(task.encode()).hexdigest()[:4] + "-" + hashlib.sha256((agent + call_id).encode()).hexdigest()[:16]
-        path = self.store.root / "results" / (name + ".txt")
+        from .store import now
+        intents = [e for e in self.store.events("tool.intent", target=agent) if e["data"]["call_id"] == call_id]
+        tool_name = intents[-1]["data"]["name"] if intents else "result"
+        name = hashlib.sha256(task.encode()).hexdigest()[:4] + "-" + tool_name + "-" + hashlib.sha256((agent + call_id).encode()).hexdigest()[:16]
+        path = self.store.root / "results" / now()[:10] / (name + ".txt")
         atomic(path, source_bytes)
-        metadata = {"agent": agent, "task": task, "call_id": call_id, "source": ref,
+        metadata = {"agent": agent, "task": task, "call_id": call_id, "tool": tool_name, "source": ref,
                     "full_result": full_ref, "path": str(path), "curation_required": True}
         atomic(path.with_suffix(".json"), encoded(metadata))
         self.store.append("result.saved", metadata, target=agent, task=task, dedup="large-result:" + agent + ":" + call_id)

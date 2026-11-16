@@ -88,3 +88,19 @@ def test_known_reasoning_usage_counts_without_ciphertext_length(tmp_path):
     body = context.request("astra")
     from bloom4.context import estimate
     assert context.tokens("astra", body) == estimate(body) + 100
+
+
+def test_forks_reference_shared_history_and_cannot_read_future_parent_memory(tmp_path):
+    store, memory, context = setup(tmp_path)
+    first = memory.publish("owner", "astra", "L2", "past", "Inherited historical marker")
+    context.append("astra", [{"role": "user", "content": "Shared history"}])
+    context.fork("astra", "branch_a", "Alternative A")
+    context.fork("astra", "branch_b", "Alternative B")
+    agents = Agents(store)
+    assert agents.get("branch_a").seed["history"] == agents.get("branch_b").seed["history"]
+    assert "items" not in agents.get("branch_a").seed
+    assert memory.search("branch_a", "Inherited")[0]["id"] == first["event"]
+    future = memory.publish("owner", "astra", "L2", "future", "Private future marker")
+    from bloom4.tools import Tools
+    assert not Tools(store).can_read_event("branch_a", store.get(future["event"]), None)
+    assert not memory.search("branch_a", "future")

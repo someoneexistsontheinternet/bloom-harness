@@ -18,7 +18,11 @@ class Memory:
         if owner != "shared":
             agent = self.agents.get(owner)
             if agent.seed:
-                for item in agent.seed.get("memories", []):
+                inherited = list(agent.seed.get("memories", []))
+                for event_id in agent.seed.get("memory_heads", []):
+                    event = self.store.get(event_id)
+                    inherited.append({**event["data"], "event": event["id"]})
+                for item in inherited:
                     entries[(item["layer"], item["key"])] = item
         for event in self.store.events("memory.accepted", target=owner):
             item = {**event["data"], "event": event["id"]}
@@ -94,6 +98,7 @@ class Memory:
 
     def search(self, owner, query):
         allowed = {owner, "shared"}
+        inherited = set((self.agents.get(owner).seed or {}).get("sources", []))
         return [e for e in self.store.search(query, limit=100)
-                if e["target"] in allowed and e["kind"] in
+                if (e["target"] in allowed or e["id"] in inherited) and e["kind"] in
                 ("memory.accepted", "input.received", "answer", "timeline.entry", "source.saved")]

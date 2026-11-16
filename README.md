@@ -103,6 +103,13 @@ historical lesson in full. Explicit memory reads can append newer accepted
 revisions. Token estimates include known reasoning usage without counting
 encrypted serialization length; provider usage remains authoritative.
 
+Owners can also invoke `fork_agent` to consult a persistent branch. The seed is
+the model-decision input, before its newly proposed effects, plus applied owner
+updates. Multiple branches reference the same immutable history object rather
+than duplicating native history in their registry files. Private memory then
+diverges; inherited source grants stop at the fork. Reports join the parent;
+automatic adoption of a winning branch as the main history is not implemented.
+
 Owners can compact after 20 minutes without owner input only when their
 uncompressed tail exceeds 100k. Incoming input preempts idle maintenance.
 Failed optional compaction keeps the old context and is deferred for that

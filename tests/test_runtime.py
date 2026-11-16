@@ -120,3 +120,17 @@ async def test_budget_persists_and_covers_helpers(tmp_path):
     assert len(provider.requests) == 1
     assert Budget(store).status()["remaining_calls"] == 0
     assert "budget" in next(iter(runtime.tasks().values()))["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_agent_can_fork_its_decision_input_and_join_report(tmp_path):
+    store, provider, runtime = setup(tmp_path, {"gpt-6-astra": [
+        [tool("fork_agent", {"agent": "alternative", "responsibility": "Check an alternative", "message": "Analyze this alternative"}, "fork1")],
+        [message("Branch evidence")], [message("Parent accepted the report")],
+    ]}, auto_recall=False)
+    Mailbox(store).post("Explore an alternative")
+    await runtime.run(seconds=3)
+    assert len(provider.requests) == 3
+    assert len(store.events("answer")) == 1
+    assert Agents(store).get("alternative").seed["history"]
+    assert not Context(store).pending_calls("alternative")

@@ -155,6 +155,8 @@ class Runtime:
             for i, response in enumerate(responses):
                 last = i == len(responses) - 1
                 data = {"call": calls[i]["id"], "response": self.store.put(encoded(response), "application/json"),
+                        "origin_call": call["id"], "applied_inputs": [e["id"] for e in generation.applied_inputs] if last else [],
+                        "provider_status": response.get("status", "completed"),
                         "trace": trace, "usage": response.get("usage") or {},
                         "model_reported": response.get("model"),
                         "purpose": purpose if last else "continuation_part"}
@@ -201,14 +203,30 @@ class Runtime:
         if any(e["data"]["call_id"] == call["call_id"] for e in self.store.events("tool.completed", target=agent)):
             return
         try:
-            if name in ("delegate", "retrieve", "wait", "attention", "selection_feedback"):
+            if name in ("delegate", "fork_agent", "retrieve", "wait", "attention", "selection_feedback"):
                 if name not in {x["name"] for x in definitions(self.agents.get(agent).role)}:
                     raise PermissionError("Coordination tool unavailable to role")
                 self.store.append("tool.intent", {"call_id": call["call_id"], "name": name, "arguments": args,
                     "approval": approval}, actor=agent, target=agent, task=task_id,
                     dedup="tool:" + agent + ":" + call["call_id"])
                 suffix = hashlib.sha256((agent + call["call_id"]).encode()).hexdigest()[:24]
-                if name == "delegate":
+                if name == "fork_agent":
+                    branch = args["agent"]
+                    if self.store.events("agent.created", target=branch):
+                        if (self.agents.get(branch).seed or {}).get("origin") != approval:
+                            raise ValueError("Fork identity belongs to another checkpoint")
+                    else:
+                        completed = self.store.get(approval)
+                        started = self.store.get(completed["data"].get("origin_call", completed["data"]["call"]))
+                        request = json.loads(self.store.read(started["data"]["request"]))
+                        items = list(request["input"])
+                        for source in completed["data"].get("applied_inputs", []):
+                            items.append({"role": "user", "content": self.store.get(source)["data"]["text"]})
+                        self.context.fork(agent, branch, args["responsibility"], source_items=items, origin=approval)
+                    handle = self.open(branch, args["message"], task="fork_" + suffix, parent_task=task_id,
+                                       required=True, origin=agent)
+                    value = {"handle": handle, "agent": branch, "status": "accepted", "history": "shared immutable checkpoint"}
+                elif name == "delegate":
                     worker = args["agent"]
                     if not self.store.events("agent.created", target=worker):
                         self.agents.create(worker, "sol", args["responsibility"], parent=agent)

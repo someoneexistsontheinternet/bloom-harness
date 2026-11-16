@@ -41,21 +41,24 @@ class Context:
             return events[-1]
         identity = self.agents.get(agent)
         if identity.seed:
-            contract = identity.seed["contract"]
-            prefix = identity.seed["items"]
+            contract = identity.seed.get("contract") or self.store.get(identity.seed["parent_snapshot"])["data"]["contract"]
+            prefix = identity.seed.get("items", [])
+            prefix_ref = identity.seed.get("history")
         else:
+            prefix_ref = None
             contract = {"instructions": INSTRUCTIONS, "tools": list(tools),
                         "profile": PROFILES[identity.role], "window": 1_000_000}
             prefix = [{"role": "user", "content": f"Runtime identity: {agent}; role: {identity.role}. Responsibility: {identity.responsibility}. "
                        f"Your work directory is {self.agents.scope(agent)}.\nAccepted memory snapshot:\n" +
                        json.dumps(self.memory.working_packet(agent), ensure_ascii=False)}]
         return self.store.append("context.snapshot", {"contract": contract, "prefix": prefix,
+            "prefix_ref": prefix_ref,
             "through": 0, "reasoning_seed": (identity.seed or {}).get("reasoning_tokens", 0),
             "memory_events": [e["event"] for e in self.memory.packet(agent)]}, target=agent)
 
     def items(self, agent, tools=()):
         snapshot = self.snapshot(agent, tools)
-        result = list(snapshot["data"]["prefix"])
+        result = self.prefix(snapshot)
         for event in self.store.events(target=agent, after=snapshot["data"]["through"]):
             if event["kind"] == "history.added":
                 result.extend(event["data"]["items"])
@@ -67,6 +70,11 @@ class Context:
                 result.append({"type": "function_call_output", "call_id": event["data"]["call_id"],
                                "output": event["data"]["output"]})
         return result
+
+    def prefix(self, snapshot):
+        """Resolve a fork's shared history object without copying it into every record."""
+        data = snapshot["data"]
+        return json.loads(self.store.read(data["prefix_ref"])) if data.get("prefix_ref") else list(data["prefix"])
 
     def append(self, agent, items, *, task="", sources=(), dedup=None):
         return self.store.append("history.added", {"items": items, "sources": list(sources)},
@@ -111,8 +119,8 @@ class Context:
 
     def tail_tokens(self, agent):
         """Measure uncompressed native history separately from the frozen memory prefix."""
-        prefix = self.snapshot(agent)["data"]["prefix"]
-        return self.tokens(agent, self.items(agent)[len(prefix):])
+        snapshot = self.snapshot(agent)
+        return self.tokens(agent, self.items(agent)[len(self.prefix(snapshot)):]) - snapshot["data"].get("reasoning_seed", 0)
 
     def compact(self, agent, summary, *, approval=None, actor=None, through=None, source_items=None):
         """Adopt a source-linked working summary; preserve exact history and active memory."""
@@ -150,13 +158,18 @@ class Context:
             "prefix": prefix, "through": through, "timeline": timeline["id"],
             "memory_events": [e["event"] for e in self.memory.packet(agent)]}, target=agent)
 
-    def fork(self, parent, name, responsibility):
+    def fork(self, parent, name, responsibility, *, source_items=None, origin=None):
         """Fork settled native history; subsequent context and memory revisions diverge."""
-        if self.pending_calls(parent):
+        if source_items is None and self.pending_calls(parent):
             raise ValueError("Fork requires a settled tool boundary")
         identity = self.agents.get(parent)
-        seed = {"contract": self.snapshot(parent)["data"]["contract"],
-                "items": self.items(parent), "memories": self.memory.entries(parent),
+        items = self.items(parent) if source_items is None else source_items
+        calls = {i["call_id"] for i in items if i.get("type") == "function_call"}
+        results = {i["call_id"] for i in items if i.get("type") == "function_call_output"}
+        if calls - results: raise ValueError("Fork checkpoint contains unsettled native calls")
+        seed = {"history": self.store.put(encoded(items), "application/json"),
+                "memory_heads": [e["event"] for e in self.memory.entries(parent)],
+                "sources": [e["id"] for e in self.store.events(target=parent)], "origin": origin,
                 "parent_snapshot": self.snapshot(parent)["id"],
                 "reasoning_tokens": max(0, self.tokens(parent, self.items(parent)) - estimate(self.items(parent)))}
         child = self.agents.create(name, identity.role, responsibility, parent=parent, seed=seed)
