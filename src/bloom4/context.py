@@ -33,6 +33,9 @@ class Context:
         self.memory = Memory(store)
 
     def snapshot(self, agent, tools=()):
+        if not tools:
+            from .tools import definitions
+            tools = definitions(self.agents.get(agent).role)
         events = self.store.events("context.snapshot", target=agent)
         if events:
             return events[-1]
@@ -43,7 +46,8 @@ class Context:
         else:
             contract = {"instructions": INSTRUCTIONS, "tools": list(tools),
                         "profile": PROFILES[identity.role], "window": 1_000_000}
-            prefix = [{"role": "user", "content": "Accepted memory snapshot:\n" +
+            prefix = [{"role": "user", "content": f"Runtime identity: {agent}; role: {identity.role}. Responsibility: {identity.responsibility}. "
+                       f"Your work directory is {self.agents.scope(agent)}.\nAccepted memory snapshot:\n" +
                        json.dumps(self.memory.packet(agent), ensure_ascii=False)}]
         return self.store.append("context.snapshot", {"contract": contract, "prefix": prefix,
             "through": 0, "memory_events": [e["event"] for e in self.memory.packet(agent)]}, target=agent)
@@ -55,7 +59,9 @@ class Context:
             if event["kind"] == "history.added":
                 result.extend(event["data"]["items"])
             elif event["kind"] == "model.completed" and event["data"].get("purpose", "turn") == "turn":
-                result.extend(json.loads(self.store.read(event["data"]["response"]))["output"])
+                result.extend(json.loads(self.store.read(event["data"]["native_items"]))
+                    if event["data"].get("native_items") else
+                    json.loads(self.store.read(event["data"]["response"]))["output"])
             elif event["kind"] == "tool.completed":
                 result.append({"type": "function_call_output", "call_id": event["data"]["call_id"],
                                "output": event["data"]["output"]})
@@ -99,6 +105,10 @@ class Context:
             approved = self.store.get(approval) if approval else None
             if not approved or approved["kind"] != "model.completed" or approved["target"] != agent:
                 raise PermissionError("The owning agent must approve its working compaction")
+            from .provider import public_text
+            if approved["data"].get("purpose") != "compact" or public_text(json.loads(
+                    self.store.read(approved["data"]["response"]))) != summary:
+                raise ValueError("Compaction approval does not match the exact memo")
         if self.pending_calls(agent):
             raise ValueError("Settle native tool calls before compaction")
         if estimate(summary) > PROFILES[identity.role]["target"]:

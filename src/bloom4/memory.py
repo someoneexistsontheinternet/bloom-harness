@@ -55,6 +55,11 @@ class Memory:
         for source in sources:
             self.store.get(source)
         with self.store.locked():
+            if approval:
+                for event in self.store.events("memory.accepted", target=owner):
+                    item = event["data"]
+                    if (item.get("approval"), item["layer"], item["key"], item["text"], item["revision"]) == (approval, layer, key, text, expected + 1):
+                        return {**item, "event": event["id"]}
             old = self.get(owner, layer, key)
             revision = old["revision"] if old else 0
             if expected != revision:

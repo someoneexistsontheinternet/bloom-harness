@@ -49,3 +49,47 @@ same tool call. Helpers cannot write maintained files or launch processes.
 Process execution is opt-in and **not an OS sandbox**; use a trusted workspace.
 Large reads retain full originals and request Luna curation before exposing
 their text to expensive owners. Small exact ranges remain available.
+
+## Run an agent
+
+```sh
+.venv/bin/bloom4 init
+# This explicit allowance includes owners, helpers, failures and compaction.
+.venv/bin/bloom4 budget --calls 12 --output-tokens 131072
+.venv/bin/bloom4 ask 'Create a persistent Sol named builder to implement a small example.'
+.venv/bin/bloom4 chat --allow-processes
+.venv/bin/bloom4 status
+.venv/bin/bloom4 usage
+```
+
+The default provider reuses an existing Codex login without copying credentials.
+Use `--provider openai` with `OPENAI_API_KEY` for the public Responses API.
+An expired Codex login is an explicit blocker; the harness never writes its
+credential file. `--output-reserve` is a local admission reservation. The public
+API also receives it as `max_output_tokens`; the Codex compatibility adapter
+does not, so it is **not a hard output or credit ceiling** there. No dollar or
+credit estimate is presented as an invoice. Budget grants survive restarts.
+
+`chat` accepts `/status`, `/usage`, `/urgent TEXT` and `/quit`. Input can also
+arrive through another CLI's `post` or a complete JSON/TOML inbox file while
+`run --watch` is active. HTTP steering is delivered at the next completed
+response boundary; `--transport websocket` enables native steering where the
+endpoint supports it. Public API support does not prove Codex-route support.
+
+Required Sol assignments and processes park the parent automatically. Luna
+retrieval is supplementary: Terra can stage a reference appendix or request a
+material follow-up. Empty history skips automatic recall. No model calls are
+bought for unchanged polling. `--no-auto-recall` disables the optional initial
+lookup. Tool-produced text over 50k is retained and curated; Luna is exempt.
+
+```sh
+.venv/bin/bloom4 pause TASK_ID
+.venv/bin/bloom4 resume TASK_ID
+.venv/bin/bloom4 reconcile MODEL_STARTED_EVENT --reason 'Inspected this effect-free failed request'
+.venv/bin/bloom4 cancel-process PROCESS_HANDLE
+.venv/bin/bloom4 compact --to terra
+```
+
+Pause prevents new effects; already running commands need explicit cancellation.
+Reconciliation records abandonment of a model purchase, not fabricated success.
+Compaction uses the owning model and preserves originals and exact active L1.

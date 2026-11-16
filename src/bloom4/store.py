@@ -106,7 +106,10 @@ class Store:
             event["seq"], event["id"], event["at"], event["kind"], event["actor"],
             event["target"], event["task"], event.get("parent"), event.get("dedup"),
             event["digest"], str(path.relative_to(self.root)), encoded(event["data"]).decode()))
-        self.db.execute("INSERT INTO search VALUES(?,?)", (event["id"], encoded(event).decode()))
+        text = encoded(event).decode()
+        if event["data"].get("search_source"):
+            text += "\n" + self.read(event["data"]["search_source"]).decode(errors="replace")
+        self.db.execute("INSERT INTO search VALUES(?,?)", (event["id"], text))
 
     def sync(self, rebuild=False):
         """Recover a committed file missing from the index; never infer a missing event."""
