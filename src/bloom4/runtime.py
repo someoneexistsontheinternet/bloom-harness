@@ -126,14 +126,17 @@ class Runtime:
                               task=task, dedup="appendix-delivery:" + event["id"])
 
     async def infer(self, agent, task, request, purpose="turn"):
+        if hasattr(self.provider, "prepare"):
+            request = self.provider.prepare(request)
         call = self.budget.reserve(agent, task, request, purpose, self.provider.output_tokens)
         queue = asyncio.Queue(); self.steering[agent] = queue
         extra = []
 
-        def reserve(entry):
+        def reserve(entry, response_id):
             try:
-                item = self.budget.reserve(agent, task, {"model": request["model"], "input": entry["data"]["text"],
-                    "continuation_of": call["id"]}, "steering", self.provider.output_tokens)
+                estimate_request = {**request, "input": [*request["input"], {"role": "user", "content": entry["data"]["text"]}]}
+                wire = {"type": "response.steer", "previous_response_id": response_id, "input": entry["data"]["text"]}
+                item = self.budget.reserve(agent, task, estimate_request, "steering", self.provider.output_tokens, wire_request=wire)
             except BudgetExceeded:
                 return None
             extra.append(item)

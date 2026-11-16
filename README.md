@@ -77,6 +77,9 @@ arrive through another CLI's `post` or a complete JSON/TOML inbox file while
 `run --watch` is active. HTTP steering is delivered at the next completed
 response boundary; `--transport websocket` enables native steering where the
 endpoint supports it. Public API support does not prove Codex-route support.
+Each request record now contains the exact JSON wire payload, excluding auth
+headers. A native steering successor reserves another call before submission;
+its actual steering payload and separate reported usage are retained.
 
 Required Sol assignments and processes park the parent automatically. Luna
 retrieval is supplementary: Terra can stage a reference appendix or request a

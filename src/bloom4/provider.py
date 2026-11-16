@@ -11,6 +11,8 @@ import time
 import httpx
 from websockets.asyncio.client import connect
 
+from .store import encoded
+
 
 @dataclass
 class Generation:
@@ -69,19 +71,27 @@ class Responses:
         return {"Authorization": "Bearer " + token, "ChatGPT-Account-Id": tokens.get("account_id", ""),
                 "originator": "bloom_v4", "User-Agent": "bloom-v4-experimental/0.0.1"}
 
-    async def generate(self, request, *, on_text=None, steering=None, reserve_steer=None):
-        headers = await self.headers()
+    def prepare(self, request):
+        """Return the exact JSON wire payload, without authentication headers."""
         body = dict(request)
         # Codex's current compatibility endpoint does not accept max_output_tokens.
         # Local budget admission is conservative; it cannot enforce that server cap.
         if self.kind != "codex":
             body["max_output_tokens"] = self.output_tokens
         if self.transport == "websocket":
+            body.pop("stream", None)
+            body["type"] = "response.create"
+        return body
+
+    async def generate(self, request, *, on_text=None, steering=None, reserve_steer=None):
+        headers = await self.headers()
+        body = self.prepare(request)
+        if self.transport == "websocket":
             return await self._websocket(body, headers, on_text, steering, reserve_steer)
         trace, completed = [], None
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, transport=self.http_transport) as client:
-                async with client.stream("POST", self.base + "/responses", headers=headers, json=body) as stream:
+            async with asyncio.timeout(self.timeout), httpx.AsyncClient(timeout=self.timeout, transport=self.http_transport) as client:
+                async with client.stream("POST", self.base + "/responses", headers={**headers, "Content-Type": "application/json"}, content=encoded(body)) as stream:
                     if stream.status_code >= 400:
                         detail = self.clean((await stream.aread()).decode())
                         raise ProviderFailure(f"Provider HTTP {stream.status_code}: {detail[:1200]}",
@@ -102,6 +112,9 @@ class Responses:
                                 raise ProviderFailure("Provider ended without a complete response", trace=trace)
         except ProviderFailure:
             raise
+        except asyncio.CancelledError as exc:
+            exc.trace = trace
+            raise
         except Exception as exc:
             raise ProviderFailure(type(exc).__name__ + ": " + self.clean(str(exc)), trace=trace) from exc
         if completed is None:
@@ -110,21 +123,20 @@ class Responses:
 
     async def _websocket(self, body, headers, on_text, steering, reserve_steer):
         url = self.base.replace("https://", "wss://").replace("http://", "ws://") + "/responses"
-        body.pop("stream", None)
         trace, responses, native, submitted, applied, reservations = [], [], [], [], [], []
         current, sent, accepted = None, [], []
         try:
             async with asyncio.timeout(self.timeout):
                 async with connect(url, additional_headers=headers) as ws:
-                    await ws.send(json.dumps({"type": "response.create", **body}))
+                    await ws.send(encoded(body).decode())
                     while True:
                         if current and steering and not steering.empty() and not sent:
                             entry = steering.get_nowait()
-                            reservation = reserve_steer(entry) if reserve_steer else None
+                            reservation = reserve_steer(entry, current) if reserve_steer else None
                             if reservation is not None:
                                 reservations.append(reservation); submitted.append(entry); sent.append(entry)
-                                await ws.send(json.dumps({"type": "response.steer", "previous_response_id": current,
-                                                          "input": entry["data"]["text"]}))
+                                await ws.send(encoded({"type": "response.steer", "previous_response_id": current,
+                                                       "input": entry["data"]["text"]}).decode())
                         # Short receive timeout permits urgent local inputs to be submitted
                         # without cancelling a receive or opening a second inference.
                         try:
@@ -160,6 +172,9 @@ class Responses:
                         elif kind in ("response.failed", "response.steer.failed", "error"):
                             raise ProviderFailure("WebSocket response/steering failed", trace=trace)
         except ProviderFailure:
+            raise
+        except asyncio.CancelledError as exc:
+            exc.trace = trace
             raise
         except Exception as exc:
             raise ProviderFailure(type(exc).__name__ + ": " + self.clean(str(exc)), trace=trace) from exc

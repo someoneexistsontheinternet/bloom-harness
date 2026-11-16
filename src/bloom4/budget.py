@@ -1,7 +1,7 @@
 """Durable admission budgets across all owners, helpers, failures and compaction."""
 
 from .context import estimate
-from .store import Store, uid
+from .store import Store, encoded
 
 
 class BudgetExceeded(RuntimeError):
@@ -38,7 +38,7 @@ class Budget:
                 "remaining_calls": grant["data"]["calls"] - len(calls),
                 "accounted_output": output, "accounted_input": inputs, "unknown_usage_calls": unknown}
 
-    def reserve(self, agent, task, request, purpose="turn", output_reserve=32768):
+    def reserve(self, agent, task, request, purpose="turn", output_reserve=32768, *, wire_request=None):
         with self.store.locked():
             status = self.status()
             tokens = estimate(request)
@@ -46,7 +46,7 @@ class Budget:
                 status["accounted_output"] + output_reserve > status["limits"]["output_tokens"] or
                 status["accounted_input"] + tokens > status["limits"]["input_tokens"]):
                 raise BudgetExceeded("Explicit model-call budget exhausted; grant a new allowance to continue")
-            ref = self.store.put(__import__('json').dumps(request), "application/json")
+            ref = self.store.put(encoded(request if wire_request is None else wire_request), "application/json")
             return self.store.append("model.started", {"request": ref, "purpose": purpose,
                 "budget": status["grant"], "output_reserve": output_reserve, "input_estimate": tokens,
                 "model": request["model"]}, target=agent, task=task)
