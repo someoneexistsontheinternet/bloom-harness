@@ -1,6 +1,7 @@
 import hashlib
 import json
 import re
+from typing import Literal
 
 from bloom_safari.web_document import page_document
 
@@ -56,8 +57,8 @@ async def run(
     question: str = "",
     urls: list[str] | None = None,
     start: int = 0,
-    width: int = 512,
-    height: int = 2048,
+    width: Literal[512, 1024] = 512,
+    height: Literal[512, 1024, 2048, 4096] = 2048,
 ):
     """Search ordinary signed-in Safari, capture up to 20 distinct candidates, and ask Luna to select useful full documents and native images. Optionally capture specific URLs or a later screenshot range. Large selected text is curated with exact numbered passages; originals, access failures and screenshot coverage remain available. This opens only task-owned Safari windows."""
     capture = await tool.service(

@@ -31,6 +31,20 @@ def annotation(node):
         return {"type": primitive[name]}
     if isinstance(node, ast.Subscript):
         base = ast.unparse(node.value)
+        if base in ("Literal", "typing.Literal"):
+            nodes = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
+            values = [ast.literal_eval(n) for n in nodes]
+            types = {
+                str: "string",
+                int: "integer",
+                float: "number",
+                bool: "boolean",
+                type(None): "null",
+            }
+            if not values or any(type(v) not in types for v in values):
+                raise ValueError("Literal tool choices must be JSON scalar values")
+            kinds = sorted({types[type(v)] for v in values})
+            return {"type": kinds[0] if len(kinds) == 1 else kinds, "enum": values}
         if base == "list":
             return {"type": "array", "items": annotation(node.slice)}
         if base == "dict":
@@ -67,6 +81,10 @@ def definition(path):
     if required_count < 0:
         raise ValueError("Tool() cannot have a model-supplied default")
     properties = {p.arg: annotation(p.annotation) for p in params}
+    for param, default in zip(params[required_count:], fn.args.defaults):
+        value = ast.literal_eval(default)
+        json.dumps(value, allow_nan=False)
+        properties[param.arg]["default"] = value
     options = {}
     for node in tree.body:
         if isinstance(node, ast.Assign):

@@ -102,7 +102,21 @@ def test_discovery_never_imports_tool_code(tmp_path):
         'raise RuntimeError("must not execute on discovery")\nasync def run(tool, query: str, count: int = 2):\n    """Example tool."""\n    pass\n'
     )
     assert definition(path)["schema"]["parameters"]["required"] == ["query"]
+    assert definition(path)["schema"]["parameters"]["properties"]["count"]["default"] == 2
     assert discover(tmp_path)[0]["name"] == "example"
+
+
+def test_native_search_schema_exposes_valid_capture_sizes_and_defaults():
+    import jsonschema
+    from bloom41.agents import resource_directory
+
+    schema = definition(resource_directory("bundled") / "search.py")["schema"]["parameters"]
+    assert schema["properties"]["width"] == {"type": "integer", "enum": [512, 1024], "default": 512}
+    assert schema["properties"]["height"]["default"] == 2048
+    for height in (512, 1024, 2048, 4096):
+        jsonschema.validate({"query": "fixture", "width": 1024, "height": height}, schema)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({"query": "fixture", "width": 1400, "height": 900}, schema)
 
 
 async def test_nested_tools_share_actor_but_have_distinct_receipts(tmp_path):
