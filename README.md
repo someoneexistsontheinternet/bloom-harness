@@ -6,8 +6,11 @@ calls models and runs asynchronous standalone Python tools.
 
 Development is incremental: commit each coherent feature after focused checks.
 The architecture and acceptance criteria are in [docs/design.md](docs/design.md).
-This initial scaffold is not yet a runnable agent. No production service or live
-inference is started by installation or tests.
+The durable foundation is implemented: immutable file events, rebuildable SQLite,
+agent/branch identities, exact text/attachment packages and idempotent delivery.
+Three focused tests cover file-only recovery, interrupted delivery and identity
+authority. The CLI loop and tool runner are still under development. No production
+service or live inference is started by installation or tests.
 
 The Safari capture source is retained separately under `lib/bloom_safari` for
 adaptation. It is not yet connected to the new tool runner. Its native helper
