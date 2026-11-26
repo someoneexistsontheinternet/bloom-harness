@@ -195,7 +195,10 @@ class Loop:
             raise ValueError("Give the fork a concrete question")
         branch_id = "branch_" + digest(job["id"].encode())[:24]
         branch = self.agents.fork(
-            actor, branch_id, {"request": turn["request"], "turn": turn["id"]}, args["question"]
+            actor,
+            branch_id,
+            {"request": turn["request"], "turn": turn["id"], "tools": turn["tools"]},
+            args["question"],
         )
         self.messages.deliver(
             actor.scope,
@@ -214,12 +217,23 @@ class Loop:
 
     async def memory_api(self, actor, job, args):
         turn = self.turn(job.get("turn"))
-        if (
-            not turn
-            or turn["scope"] != actor.scope
-            or not self.store.by_key("model-completed:" + turn["id"])
-        ):
+        completed = self.store.by_key("model-completed:" + turn["id"]) if turn else None
+        if not turn or turn["scope"] != actor.scope or not completed:
             raise PermissionError("Memory changes need the owning model's completed decision")
+        response = self.store.json(completed["data"]["response"])
+        approvals = [
+            c
+            for c in response.get("output", [])
+            if c.get("type") == "function_call"
+            and c.get("name") == "edit_file"
+            and c.get("status", "completed") == "completed"
+        ]
+        if not any(
+            "job_" + digest(encoded([turn["id"], c["call_id"]]))[:24] == job["id"]
+            and json.loads(c["arguments"]) == job["arguments"]
+            for c in approvals
+        ):
+            raise PermissionError("Memory approval is not the owner's exact native edit call")
         return self.context.publish_memory(actor, job, args)
 
     def package(self, ident):
@@ -771,7 +785,9 @@ class Loop:
                     and (not pending_inboxes or blocked)
                 ):
                     break
-                await asyncio.sleep(0.02)
+                await asyncio.sleep(
+                    min(max(self.heartbeat, 0.02), 0.25 if self.active or runnable_jobs else 1.0)
+                )
         finally:
             for task in self.active.values():
                 task.cancel()

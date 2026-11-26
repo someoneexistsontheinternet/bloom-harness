@@ -233,7 +233,20 @@ class Jobs:
             if self.actor(target) != self.actor(job):
                 raise PermissionError("Job belongs to another execution identity")
             if action == "cancel":
-                return await self.cancel(target["id"])
+                result = await self.cancel(target["id"])
+                if arguments.get("reason"):
+                    latest = self.get(target["id"])
+                    self.state(
+                        target["id"], latest["status"], error=self.clean(str(arguments["reason"]))
+                    )
+                return result
+            if target["id"] == job["id"]:
+                raise ValueError("A job cannot wait for its own completion")
+            self.state(
+                job["id"],
+                job["status"],
+                waiting_on=target["id"] if target["status"] not in TERMINAL else None,
+            )
             return {
                 "id": target["id"],
                 "status": target["status"],
@@ -307,6 +320,7 @@ class Jobs:
             "script": str(script),
             "arguments": job["arguments"],
             "read_roots": [str(p) for p in self.agents.read_roots(actor)],
+            "shared_root": str(self.store.root / "workspace/shared"),
         }
         env = {
             "PATH": "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -402,7 +416,8 @@ class Jobs:
                     ident, "cancelled", error="Tool execution deadline expired", reason="deadline"
                 )
         for job in self.states():
-            if len(self.running) >= self.limit:
+            occupied = sum(not self.get(ident).get("waiting_on") for ident in self.running)
+            if occupied >= self.limit:
                 break
             if job["status"] == "prepared" and not job.get("parent"):
                 self.store.sync()
@@ -415,6 +430,10 @@ class Jobs:
         job = self.get(job_id)
         if job["status"] in TERMINAL:
             return {"status": job["status"]}
+        if job.get("parent"):
+            # Children share one isolated executor. Stopping one stops that executor,
+            # with explicit terminal/uncertain receipts for its siblings.
+            return await self.cancel(job["parent"])
         if job["status"] == "prepared":
             self.state(job_id, "cancelled", reason="Cancelled before execution")
         elif job_id in self.running:

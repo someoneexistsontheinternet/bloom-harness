@@ -143,3 +143,104 @@ async def test_cancel_owned_real_process_and_exclusive_runner(tmp_path):
     finally:
         await jobs.close()
         store.close()
+
+
+async def test_waiting_sender_does_not_starve_queued_dependency(tmp_path):
+    store = Store(tmp_path)
+    agents = Agents(store)
+    agents.bootstrap()
+    (agents.path("astra") / "tools/waiting.py").write_text('''async def run(tool, dependency: str):
+    """Wait for an existing result without holding an execution slot."""
+    return await tool.wait_result(dependency)
+''')
+    jobs = Jobs(store, limit=1, trusted_tools=sys.platform != "darwin")
+    await jobs.start()
+    try:
+        waiter = jobs.submit(Actor("astra"), "waiting", {"dependency": "queued"}, job_id="waiter")
+        jobs.submit(Actor("astra"), "bash", {"command": "printf 'ready'"}, job_id="queued")
+        result = await settled(jobs, waiter["id"])
+        assert result["status"] == "completed", result
+        assert store.json(result["result"])["output"]["stdout"] == "ready"
+    finally:
+        await jobs.close()
+        store.close()
+
+
+async def test_command_timeout_stops_shell_descendants_and_keeps_partial_output(tmp_path):
+    store = Store(tmp_path)
+    agents = Agents(store)
+    agents.bootstrap()
+    jobs = Jobs(store, trusted_tools=sys.platform != "darwin")
+    await jobs.start()
+    try:
+        job = jobs.submit(
+            Actor("astra"), "bash", {"command": "printf 'partial'; sleep 30", "timeout": 1}
+        )
+        result = await settled(jobs, job["id"])
+        assert result["status"] == "cancelled", result
+        directory = agents.path("astra") / "work/command-output" / job["id"]
+        assert (directory / "stdout.txt").read_text() == "partial"
+        assert result.get("exit_code") is not None
+        assert "Command timeout" in result["error"]
+    finally:
+        await jobs.close()
+        store.close()
+
+
+async def test_invalid_and_revoked_execution_credentials_are_rejected(tmp_path):
+    store = Store(tmp_path)
+    Agents(store).bootstrap()
+    jobs = Jobs(store, trusted_tools=sys.platform != "darwin")
+    await jobs.start()
+
+    async def request(credential):
+        reader, writer = await asyncio.open_connection(*jobs.address)
+        writer.write(
+            json.dumps(
+                {
+                    "job": "probe",
+                    "token": credential,
+                    "action": "result",
+                    "arguments": {"job_id": "probe"},
+                }
+            ).encode()
+            + b"\n"
+        )
+        await writer.drain()
+        result = json.loads(await reader.readline())
+        writer.close()
+        await writer.wait_closed()
+        return result
+
+    try:
+        jobs.submit(Actor("astra"), "bash", {"command": "sleep 30"}, job_id="probe")
+        await jobs.pump()
+        assert "Invalid execution credential" in (await request("invalid-fixture"))["error"]
+        await jobs.cancel("probe")
+        assert "no longer active" in (await request(jobs.token("probe")))["error"]
+    finally:
+        await jobs.close()
+        store.close()
+
+
+async def test_frozen_tool_source_is_used_after_the_directory_changes(tmp_path):
+    store = Store(tmp_path)
+    agents = Agents(store)
+    agents.bootstrap()
+    path = agents.path("astra") / "tools/version.py"
+    path.write_text(
+        'async def run(tool):\n    """Report the inspected version."""\n    return "original"\n'
+    )
+    frozen = {**definition(path), "source": store.put(path.read_bytes(), "text/x-python")}
+    path.write_text(
+        'async def run(tool):\n    """Report a newer version."""\n    return "changed"\n'
+    )
+    jobs = Jobs(store, trusted_tools=sys.platform != "darwin")
+    await jobs.start()
+    try:
+        job = jobs.submit(Actor("astra"), "version", {}, frozen=frozen)
+        result = await settled(jobs, job["id"])
+        assert store.json(result["result"]) == "original"
+    finally:
+        await jobs.close()
+        store.close()

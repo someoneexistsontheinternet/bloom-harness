@@ -16,6 +16,54 @@ class Context:
         self.store = store
         self.agents = Agents(store)
 
+    def memory(self, actor):
+        """Accepted file revisions plus an L2 retrieval index, refreshed only at boundaries."""
+        groups = {}
+        for scope, folder in (
+            (actor.agent, self.agents.path(Actor(actor.agent)) / "memory"),
+            ("shared", self.store.root / "workspace/shared/memory"),
+        ):
+            # Reapply accepted originals after a crash between receipt and file materialization.
+            accepted = {}
+            for row in self.store.events("memory.accepted", scope):
+                accepted[row["data"]["path"]] = row
+            for row in accepted.values():
+                relative = Path(row["data"]["path"])
+                relative = (
+                    Path(*relative.parts[2:]) if scope == "shared" else Path(*relative.parts[1:])
+                )
+                destination = folder / relative
+                raw = self.store.read(row["data"]["source"])
+                if not destination.exists() or destination.read_bytes() != raw:
+                    atomic(destination, raw)
+            records = {}
+            for name in ("L0.md", "L1.md"):
+                path = folder / name
+                records[name] = path.read_text() if path.exists() else ""
+            records["L2_index"] = [
+                {
+                    "path": ("shared/memory/" if scope == "shared" else "memory/")
+                    + str(p.relative_to(folder)),
+                    "sha256": digest(p.read_bytes()),
+                    "bytes": p.stat().st_size,
+                }
+                for p in sorted((folder / "L2").glob("*.md"))
+            ]
+            groups["shared" if scope == "shared" else "private"] = records
+        return groups
+
+    def identity_prefix(self, actor):
+        identity = self.agents.get(actor)
+        return {
+            "role": "developer",
+            "content": "Identity: "
+            + actor.agent
+            + ". Responsibility: "
+            + identity["responsibility"]
+            + "\nAccepted memory (L2 files remain retrievable):\n"
+            + json.dumps(self.memory(actor), ensure_ascii=False),
+        }
+
     def snapshot(self, actor):
         old = self.store.latest("context.snapshot", actor.scope)
         if old:
@@ -38,21 +86,7 @@ class Context:
             ]
             instructions = request["instructions"]
         else:
-            memories = {
-                str(p.relative_to(root / "memory")): p.read_bytes().decode()
-                for p in sorted((root / "memory").rglob("*.md"))
-            }
-            prefix = [
-                {
-                    "role": "developer",
-                    "content": "Identity: "
-                    + actor.agent
-                    + ". Responsibility: "
-                    + identity["responsibility"]
-                    + "\nAccepted memory:\n"
-                    + json.dumps(memories, ensure_ascii=False),
-                }
-            ]
+            prefix = [self.identity_prefix(actor)]
             instructions = (root / "instructions.md").read_text()
         return self.store.event(
             "context.snapshot",
@@ -172,7 +206,7 @@ class Context:
 
     def publish_memory(self, actor, job, arguments):
         if actor.branch or self.agents.get(actor)["role"] not in ("astra", "sol"):
-            raise PermissionError("Only the persistent owner may publish its private memory")
+            raise PermissionError("Only a persistent owner may publish memory")
         approved_arguments = {
             k: job["arguments"].get(k) for k in ("path", "text", "expected_sha256")
         }
@@ -181,14 +215,19 @@ class Context:
                 "Memory approval must match the owner's exact native edit arguments"
             )
         path = Path(arguments["path"])
-        if path.is_absolute() or len(path.parts) < 2 or path.parts[0] != "memory":
+        shared = path.parts[:2] == ("shared", "memory")
+        if shared and actor != Actor("astra"):
+            raise PermissionError("Only continuous Astra approves shared memory")
+        relative = Path(*path.parts[1:]) if shared else path
+        if path.is_absolute() or len(relative.parts) < 2 or relative.parts[0] != "memory":
             raise ValueError("Select memory/L0.md, memory/L1.md or memory/L2/*.md")
-        if path.as_posix() not in ("memory/L0.md", "memory/L1.md") and not (
-            path.parts[1] == "L2" and path.suffix == ".md"
+        if relative.as_posix() not in ("memory/L0.md", "memory/L1.md") and not (
+            len(relative.parts) == 3 and relative.parts[1] == "L2" and relative.suffix == ".md"
         ):
             raise ValueError("Invalid memory layer")
-        destination = (self.agents.path(actor) / path).resolve()
-        if not destination.is_relative_to(self.agents.path(actor) / "memory"):
+        root = self.store.root / "workspace/shared" if shared else self.agents.path(actor)
+        destination = (root / relative).resolve()
+        if not destination.is_relative_to(root / "memory"):
             raise PermissionError("Memory path escapes the owner")
         current = digest(destination.read_bytes()) if destination.exists() else None
         expected = arguments.get("expected_sha256")
@@ -199,7 +238,7 @@ class Context:
             raise ValueError("Memory revision changed")
         record = self.store.event(
             "memory.accepted",
-            actor.agent,
+            "shared" if shared else actor.agent,
             {
                 "path": str(path),
                 "source": self.store.put(body, "text/markdown"),
@@ -213,15 +252,19 @@ class Context:
         return {"path": str(path), "sha256": digest(body), "approval": record["key"]}
 
     async def compact(self, actor, models, *, force=False):
-        if actor.branch:
-            return False
         snap = self.snapshot(actor)
         items = self.history(actor)
         size = count(encoded(visible(items)).decode())
         role = self.agents.get(actor)["role"]
         inputs = len(self.store.events("turn.received", actor.scope, after=snap["seq"]))
-        due = size > 20_000 if role == "terra" else size > 250_000 and inputs >= 3
-        pressure = size >= 450_000
+        due = (
+            size > 500_000
+            if actor.branch
+            else size > 20_000
+            if role == "terra"
+            else size > 250_000 and inputs >= 3
+        )
+        pressure = size >= (500_000 if actor.branch else 450_000)
         if not (force or due or pressure):
             return False
         through = max(
@@ -252,8 +295,22 @@ class Context:
             raise ValueError("Invalid owning compaction memo; original history retained")
         # Preserve the literal most recent inbound and owner instructions, not just a paraphrase.
         protected = [i for i in items if i.get("role") == "user"][-3:]
+        initial = self.store.json(snap["data"]["prefix"])
+        identity = initial[0] if actor.branch else self.identity_prefix(actor)
+        branch_instruction = (
+            [
+                i
+                for i in initial
+                if i.get("role") == "developer"
+                and isinstance(i.get("content"), str)
+                and i["content"].startswith("Temporary self-fork.")
+            ]
+            if actor.branch
+            else []
+        )
         prefix = [
-            self.store.json(snap["data"]["prefix"])[0],
+            identity,
+            *branch_instruction,
             {"role": "user", "content": "Owner-approved working memo:\n" + memo},
             *protected,
         ]

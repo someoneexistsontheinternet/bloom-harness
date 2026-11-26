@@ -86,6 +86,28 @@ async def test_uncertain_stream_is_never_rebought(tmp_path):
     store.close()
 
 
+async def test_cancelled_inference_has_a_terminal_receipt(tmp_path):
+    began = asyncio.Event()
+
+    class Pending(Scripted):
+        async def generate(self, request):
+            began.set()
+            await asyncio.Event().wait()
+
+    store = Store(tmp_path)
+    models = Models(store, Pending())
+    models.grant(1)
+    pending = asyncio.create_task(models.call(Actor("astra"), {"input": []}, call_id="interrupted"))
+    await began.wait()
+    pending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    failed = store.by_key("model-failed:interrupted")
+    assert failed and failed["data"]["uncertain"] is True
+    assert not store.events("model.completed")
+    store.close()
+
+
 async def test_real_http_adapter_uses_fake_transport_without_credentials(tmp_path):
     requests = []
 

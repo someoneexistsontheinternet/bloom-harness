@@ -79,12 +79,20 @@ inference. Source updates can require rebuilding and a new OS grant; active help
 bundles are never replaced. `scripts/check_web.py` supports retained capture replay
 and an opt-in live local HTML regression.
 
-Current verification: 27 offline tests pass, including executable CLI exchange,
+Owners publish private L0/L1/L2 memory through exact native edits; only continuous
+Astra publishes shared memory. Helpers and self-forks cannot approve those writes.
+Compaction is performed by the same owning model, preserves the literal recent
+inputs and immutable native original, and refreshes accepted memory only at that
+boundary. L2 remains a retrieval index instead of growing the permanent prefix.
+Working defaults are 20k tokens for Terra, 250k after three inputs for owners
+(450k pressure boundary), and 500k for temporary branches. These are compaction
+thresholds, not lower model capacities; all configured windows remain 1M.
+
+Current verification: 35 offline tests pass, including executable CLI exchange,
 exact fork seeds, cancellation, auth checks, sender preparation, superseding
 queued effects, crash recovery and explicit failed-request recovery. Live
 provider compatibility has not yet been rechecked for v4.1. Retained real Safari
 discussion/table/link captures pass replay with full text and native images
 preserved. The separate helper builds and its signature verifies, but this Mac
 currently denies its new Safari Automation grant; live v4.1 GUI capture remains
-unverified. Full memory/compaction checks are next. No production service or
-gateway deployment is included.
+unverified. No production service or gateway deployment is included.

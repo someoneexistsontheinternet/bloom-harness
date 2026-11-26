@@ -36,10 +36,14 @@ class Delivery:
         path = Path(value)
         if not path.is_absolute():
             path = (
-                root / path
-                if path.parts
-                and path.parts[0] in ("work", "memory", "tools", "inbox", "outbound", "history")
-                else root / "work" / path
+                (self.store.root / "workspace" / path)
+                if path.parts and path.parts[0] == "shared"
+                else (
+                    root / path
+                    if path.parts
+                    and path.parts[0] in ("work", "memory", "tools", "inbox", "outbound", "history")
+                    else root / "work" / path
+                )
             )
         path = path.resolve()
         if not any(path.is_relative_to(r) for r in (root, *self.agents.read_roots(actor))):

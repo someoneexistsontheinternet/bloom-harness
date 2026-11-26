@@ -81,6 +81,7 @@ class Store:
                 at TEXT, data TEXT, path TEXT, digest TEXT);
             CREATE INDEX IF NOT EXISTS subjects ON events(kind,subject,seq);
         """)
+        self.journal_stamp = None
         self.sync()
 
     @contextmanager
@@ -94,6 +95,9 @@ class Store:
             self._sync(rebuild)
 
     def _sync(self, rebuild=False):
+        stamp = self.journal.stat().st_mtime_ns
+        if not rebuild and self.journal_stamp == stamp:
+            return
         with self.db:
             if rebuild:
                 self.db.execute("DELETE FROM events")
@@ -122,6 +126,7 @@ class Store:
                         checksum,
                     ),
                 )
+        self.journal_stamp = stamp
 
     def event(self, kind, subject, data, *, key):
         with self.locked():

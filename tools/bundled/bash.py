@@ -5,29 +5,31 @@ async def run(tool, command: str, timeout: int = 60):
     """Run bash in your work directory. Independent commands can be separate calls. Waits happen locally; stdout, stderr and exit status are retained. Do not poll jobs with model turns."""
     if timeout < 1 or timeout > 86400:
         raise ValueError("Choose a timeout between 1 and 86400 seconds")
-    proc = await asyncio.create_subprocess_exec(
-        "/bin/bash",
-        "-c",
-        command,
-        cwd=tool.workspace,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout)
-    except BaseException:
-        if proc.returncode is None:
-            proc.terminate()
-            try:
-                await asyncio.wait_for(proc.wait(), 3)
-            except TimeoutError:
-                proc.kill()
-                await proc.wait()
-        raise
     directory = tool.workspace / "command-output" / tool.job
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "stdout.txt").write_bytes(stdout)
-    (directory / "stderr.txt").write_bytes(stderr)
+    with (directory / "stdout.txt").open("wb") as out, (directory / "stderr.txt").open("wb") as err:
+        proc = await asyncio.create_subprocess_exec(
+            "/bin/bash", "-c", command, cwd=tool.workspace, stdout=out, stderr=err
+        )
+        try:
+            await asyncio.wait_for(proc.wait(), timeout)
+        except TimeoutError:
+            print(
+                "Command deadline expired; partial stdout/stderr retained in " + str(directory),
+                flush=True,
+            )
+            # Stop the verified whole executor group, including shell descendants.
+            await tool.request(
+                "cancel",
+                job_id=tool.job,
+                reason="Command timeout after "
+                + str(timeout)
+                + " seconds. Partial output: "
+                + str(directory),
+            )
+            raise
+    stdout = (directory / "stdout.txt").read_bytes()
+    stderr = (directory / "stderr.txt").read_bytes()
     text = stdout.decode(errors="replace") + "\n" + stderr.decode(errors="replace")
     result = {
         "exit_code": proc.returncode,

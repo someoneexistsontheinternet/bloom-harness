@@ -125,11 +125,16 @@ class Tool:
         self.root = Path(specification["agent_root"])
         self.workspace = self.root / "work"
         self.read_roots = [Path(p) for p in specification.get("read_roots", [])]
+        self.shared = (
+            Path(specification["shared_root"]) if specification.get("shared_root") else None
+        )
 
     def path(self, value, *, write=False):
         value = Path(value)
         if value.is_absolute():
             result = value.resolve()
+        elif value.parts and value.parts[0] == "shared" and self.shared:
+            result = (self.shared / Path(*value.parts[1:])).resolve()
         elif value.parts and value.parts[0] in (
             "work",
             "memory",

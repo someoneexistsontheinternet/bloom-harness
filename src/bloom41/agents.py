@@ -58,6 +58,11 @@ class Agents:
         secret = self.store.control / "master.key"
         if not secret.exists():
             atomic(secret, secrets.token_bytes(32))
+        shared = self.store.root / "workspace/shared/memory"
+        (shared / "L2").mkdir(parents=True, exist_ok=True)
+        for name in ("L0.md", "L1.md"):
+            if not (shared / name).exists():
+                atomic(shared / name, b"")
 
     def path(self, actor):
         actor = Actor(actor) if isinstance(actor, str) else actor
@@ -82,7 +87,7 @@ class Agents:
         return [row["data"] for row in self.store.events("agent.created")]
 
     def read_roots(self, actor):
-        roots = []
+        roots = [self.store.root / "workspace/shared"]
         if self.get(actor)["role"] == "terra" and actor.agent.startswith("terra-"):
             roots.append(self.path(actor.agent.removeprefix("terra-")))
         seen = set()
@@ -98,6 +103,8 @@ class Agents:
 
     def create(self, name, role, responsibility, *, principal=None):
         identifier(name)
+        if principal is not None and (principal != Actor("astra") or role != "sol"):
+            raise PermissionError("Only continuous Astra creates persistent Sol identities")
         if role == "sol" and (
             name in ("astra", "user", "shared")
             or name.startswith("terra-")
@@ -119,8 +126,6 @@ class Agents:
             return old["data"]
         if role not in PROFILES or not responsibility.strip():
             raise ValueError("Give the agent a role and continuing responsibility")
-        if principal is not None and (principal != Actor("astra") or role != "sol"):
-            raise PermissionError("Only continuous Astra creates persistent Sol identities")
         data = {
             "id": name,
             "role": role,
@@ -193,4 +198,11 @@ class Agents:
         }
         self.store.event("branch.created", branch, record, key="branch:" + branch)
         self.materialize(actor, data, source=self.path(principal))
+        if seed.get("tools"):
+            for spec in seed["tools"]:
+                if spec["name"] != "create_agent":
+                    atomic(
+                        self.path(actor) / "tools" / (identifier(spec["name"]) + ".py"),
+                        self.store.read(spec["source"]),
+                    )
         return actor

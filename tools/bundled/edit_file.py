@@ -6,7 +6,7 @@ import uuid
 
 async def run(tool, path: str, text: str, expected_sha256: str | None = None):
     """Create a text file or replace its exact observed revision. Supply the SHA-256 from read_file when replacing. Memory changes require the owning model's explicit edit arguments."""
-    if Path(path).parts and Path(path).parts[0] == "memory":
+    if Path(path).parts and Path(path).parts[0] in ("memory", "shared"):
         return await tool.request(
             "memory_write", path=path, text=text, expected_sha256=expected_sha256
         )
