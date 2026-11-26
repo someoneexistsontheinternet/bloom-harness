@@ -26,6 +26,14 @@ never tool arguments. Arbitrary tools are refused without the macOS sandbox unle
 the operator explicitly selects trusted-tools mode. This is tested filesystem/API
 isolation, not a claim of comprehensive containment against every OS exploit.
 
+Sender preparation now runs in `send_message.py`: selected file revisions,
+existing job results and new contextual tools settle before one atomic package is
+delivered. A tool-only response can prepare context for the next final-field
+message. `extract.py` reads numbered 128k-token passes and resolves selected
+passages against the original bytes, preserving CRLF and Unicode. Sixteen tests
+pass, including real sender preparation while an unrelated process continues.
+The common interactive loop and live Safari integration are the next steps.
+
 The Safari capture source is retained separately under `lib/bloom_safari` for
 adaptation. It is not yet connected to the new tool runner. Its native helper
 must have matching source and explicit macOS permissions before live capture.

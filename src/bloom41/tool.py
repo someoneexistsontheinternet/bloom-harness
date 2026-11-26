@@ -110,6 +110,7 @@ class Tool:
         self.job = specification["job"]
         self.root = Path(specification["agent_root"])
         self.workspace = self.root / "work"
+        self.read_roots = [Path(p) for p in specification.get("read_roots", [])]
 
     def path(self, value, *, write=False):
         value = Path(value)
@@ -126,7 +127,9 @@ class Tool:
             result = (self.root / value).resolve()
         else:
             result = (self.workspace / value).resolve()
-        if not result.is_relative_to(self.root):
+        if not result.is_relative_to(self.root) and not (
+            not write and any(result.is_relative_to(p) for p in self.read_roots)
+        ):
             raise PermissionError("File is outside this agent's workspace")
         if write and not any(result.is_relative_to(self.root / p) for p in ("work", "tools")):
             raise PermissionError("Write only work/tools; publish memory through the owning API")

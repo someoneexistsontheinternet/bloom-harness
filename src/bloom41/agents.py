@@ -81,6 +81,19 @@ class Agents:
     def all(self):
         return [row["data"] for row in self.store.events("agent.created")]
 
+    def read_roots(self, actor):
+        roots = []
+        seen = set()
+        while actor.branch and actor.branch not in seen:
+            seen.add(actor.branch)
+            row = self.store.latest("branch.created", actor.branch)
+            if not row or row["data"]["owner"] != actor.agent:
+                raise PermissionError("Invalid branch source grant")
+            parent = row["data"]["parent_scope"]
+            actor = Actor(actor.agent, parent if parent != actor.agent else None)
+            roots.append(self.path(actor))
+        return roots
+
     def create(self, name, role, responsibility, *, principal=None):
         identifier(name)
         old = self.store.latest("agent.created", name)

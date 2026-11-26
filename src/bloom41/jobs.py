@@ -82,7 +82,9 @@ class Jobs:
     def actor(self, job):
         return Actor(job["agent"], job.get("branch"))
 
-    def submit(self, actor, name, arguments, *, job_id=None, turn=None, wake=True, parent=None):
+    def submit(
+        self, actor, name, arguments, *, job_id=None, turn=None, wake=True, parent=None, frozen=None
+    ):
         identifier(name)
         identity = self.agents.get(actor)
         if name == "create_agent" and actor != Actor("astra"):
@@ -111,9 +113,11 @@ class Jobs:
             self.agents.path(actor).resolve()
         ):
             raise PermissionError("Tool source escapes this agent's directory")
-        meta = definition(path)
+        meta = frozen or definition(path)
+        if meta["name"] != name:
+            raise ValueError("Frozen tool name differs from invocation")
         jsonschema.validate(arguments, meta["schema"]["parameters"])
-        source = self.store.put(path.read_bytes(), "text/x-python")
+        source = meta.get("source") or self.store.put(path.read_bytes(), "text/x-python")
         data = {
             "id": job_id,
             "agent": actor.agent,
@@ -250,6 +254,8 @@ class Jobs:
         temporary.mkdir(exist_ok=True)
         code_root = Path(__file__).resolve().parents[2]
         script = self.directory(job["id"]) / "tool.py"
+        if not script.exists():
+            atomic(script, self.store.read(job["source"]))
         read_paths = [
             "/System",
             "/usr",
@@ -264,6 +270,7 @@ class Jobs:
             root,
             self.directory(job["id"]).parent,
         ]
+        read_paths.extend(self.agents.read_roots(actor))
         write_paths = (
             [root / "work", root / "tools"]
             if self.agents.get(actor)["role"] in ("astra", "sol")
@@ -290,6 +297,7 @@ class Jobs:
             "token": self.token(job["id"]),
             "script": str(script),
             "arguments": job["arguments"],
+            "read_roots": [str(p) for p in self.agents.read_roots(actor)],
         }
         env = {
             "PATH": "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",

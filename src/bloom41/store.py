@@ -178,7 +178,9 @@ class Store:
 
     def put(self, value, media="application/json"):
         data = (
-            encoded(value)
+            value
+            if isinstance(value, bytes)
+            else encoded(value)
             if media == "application/json"
             else value.encode()
             if isinstance(value, str)

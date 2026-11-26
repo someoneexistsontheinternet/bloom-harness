@@ -101,9 +101,22 @@ class Context:
             parts.append(
                 {
                     "type": "input_text",
-                    "text": "Attachment: " + item["name"] + "; source " + item["source"]["sha256"],
+                    "text": "Attachment: inbox/"
+                    + package["id"]
+                    + "/attachments/"
+                    + item["name"]
+                    + "; source "
+                    + item["source"]["sha256"],
                 }
             )
+            if item.get("expose") == "reference":
+                parts.append(
+                    {
+                        "type": "input_text",
+                        "text": "Full original retained at that path; selected evidence accompanies this message. Use read_file/extract for another passage.",
+                    }
+                )
+                continue
             if media in ("image/png", "image/jpeg", "image/webp", "image/gif"):
                 parts.append(
                     {
