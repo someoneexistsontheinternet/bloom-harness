@@ -1,32 +1,36 @@
-# Working on Bloom
+# Working on Bloom v4.1
 
-Read README.md and the relevant docs before changing behavior. This is an
-experimental personal-agent runtime; durable effects, exact evidence and
-owner intent are more important than a passing happy-path demonstration.
+Read README.md, docs/design.md and the ignored notes/current.md before substantial work.
+The user-approved architecture is inbox → Terra → agent → outbound. Preserve the
+latest user corrections over inherited v3/v4 assumptions.
 
-- Use this checkout's `.venv`, created/synced with uv. Preserve the lockfile and
-  avoid unrelated dependency upgrades. Run small checks before broad tests.
-- Inspect Git state and active processes. Preserve unrelated edits. Never edit
-  a frozen release, live helper bundle or environment used by another run.
-- Keep runtime data, logs, credentials, transcripts and personal operational
-  notes out of Git. Never print credential values or dump whole environments.
-- Keep development records under ignored local notes/logs when needed. Preserve
-  unique evidence when reorganizing; do not delete runtime data to tidy a tree.
-- Persist intent before external effects. Reuse acknowledged work on recovery;
-  never silently replay an uncertain purchase, command or outbound message.
-- Astra owns consequential reasoning and every semantic-memory approval. Sol
-  owns substantial assignments. Luna reads evidence and may write disposable
-  helpers; it cannot publish memory or modify maintained project code.
-- Keep the sent main-history prefix stable until compaction. Preserve original
-  sources and record derived views separately. Do not lower model context
-  windows or change a research mechanism merely to make a test cheap.
-- Web inputs use `web_document.py`: complete document text once, inline data
-  tables/useful references, native images and concise provenance. Raw DOM
-  inventories stay in saved metadata, including for Luna and legacy captures.
-- Compile the Python files you changed and run focused runtime regressions.
-  Use Ruff for formatting. Browser extraction changes also need the real
-  Safari fixtures in `scripts/evaluate_web_representation.py` when available.
-- Unit tests use fake transports. Live model, Discord, browser, deployment and
-  reset checks have effects; run them only within the user's authorized scope.
-- Commit coherent verified changes with explicitly reviewed paths. Explain
-  what passed, what remains unverified and any changed behavior.
+- One integrator. Do not change the separate v3/v4 checkouts, their environments,
+  runtime state or active native helper. Never push private repository history.
+- Commit coherent features after focused verification; update README with actual
+  behavior and limits. Use this project's .venv, uv and explicit changed-file
+  compilation plus runtime smoke checks. Offline tests make no paid requests.
+- Files are authoritative; indexes are rebuildable. Preserve original messages,
+  model requests, responses, tool versions, outputs, receipts and uncertain effects.
+  No blind replay of accepted model purchases, commands or message delivery.
+- Tools are standalone Python files in each agent's directory. Tool() supplies
+  narrow authenticated capabilities, not Runtime. Native schemas come from tools.
+- Terra gathers context and monitors; it never owns substantive work. Sol owns its
+  work and the context accompanying its outgoing messages. Only continuous Astra
+  creates persistent Sol identities. Self-forks retain their owner's identity.
+- Capture outgoing message content from the model's final field. send_message
+  prepares sender-selected files, existing outputs and new tool results before
+  atomic delivery. Delivery is independent of assignment completion.
+- Wait locally. Wake only for material input/results or explicitly continuing
+  independent work. Do not buy model calls to poll jobs or announce receipts.
+- Keep native histories and 1M configured capacity. Persistent owners approve
+  their private memory/compaction; Astra approves shared memory. Original history
+  remains available through retrieval and forks.
+- Safari search uses the preserved ordinary-session native capture implementation,
+  whole document text, native images and explicit coverage. Never replace it with
+  generic HTTP search as a hidden shortcut. No service-generated permission prompt.
+- Keep credentials, runtime data, transcripts and personal notes out of Git and
+  packages. Do not expose tokens in output or logs. Tool isolation and API identity
+  checks must be tested; directory names alone are not a security boundary.
+- Keep supporting runs under logs/codex-misc and development checkpoints under
+  notes. Live inference is explicitly budgeted; no gateway/service deployment is
+  included in this CLI implementation.

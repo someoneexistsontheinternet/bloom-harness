@@ -20,6 +20,8 @@ build/
 .ruff_cache/
 .coverage
 htmlcov/
+control/
+scripts/codex-misc/
 *.sqlite3
 *.sqlite3-*
 *.db

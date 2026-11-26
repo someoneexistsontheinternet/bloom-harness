@@ -4,13 +4,13 @@ Bloom's original code is licensed under the [MIT License](LICENSE).
 
 ## Mozilla Readability
 
-The unmodified `src/bloom/web_assets/Readability.js` is vendored from
+The unmodified `lib/bloom_safari/web_assets/Readability.js` is vendored from
 [mozilla/readability](https://github.com/mozilla/readability), revision
 `ab4027a8b37669745016869a37a504727992b2ba`, under Apache-2.0. Its copyright
 notices remain in the source. The complete license is retained at
-[Readability-LICENSE.md](src/bloom/web_assets/Readability-LICENSE.md).
+[Readability-LICENSE.md](lib/bloom_safari/web_assets/Readability-LICENSE.md).
 Pinned file URLs, sizes and hashes are in
-[readability-provenance.json](src/bloom/web_assets/readability-provenance.json).
+[readability-provenance.json](lib/bloom_safari/web_assets/readability-provenance.json).
 
 The package license expression includes Apache-2.0 because these files ship
 with the distribution. It does not relicense Readability under MIT.
