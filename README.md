@@ -14,8 +14,12 @@ capability, and macOS workers run under an explicit filesystem sandbox. File rea
 revision-checked edit, local find, bash and cancellation are available. Nested tool
 calls retain separate receipts. Eight tests cover recovery, real execution,
 cancellation and cross-agent/control-file denial. The CLI loop and model/search
-tools are still under development. No production service or live inference is
-started by installation or tests.
+tools are still under development. The shared HTTP/SSE provider adapter and context
+layer now retain exact requests, native phases/images, stable history and fork
+seeds. Model admission is zero until an explicit allowance is granted. Twelve
+offline tests pass, including concurrent receipt reuse and uncertain-stream
+retention; live provider compatibility has not been rechecked for v4.1. No
+production service or live inference is started by installation or tests.
 
 The broker binds only loopback and derives identity from execution credentials,
 never tool arguments. Arbitrary tools are refused without the macOS sandbox unless

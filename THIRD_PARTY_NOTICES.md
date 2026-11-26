@@ -25,3 +25,9 @@ and UNLICENSE files beside the binary in the local workspace.
 Python dependencies are installed separately from `uv.lock` and retain their
 respective licenses. No credentials, model weights or provider software are
 included.
+
+## Token counting vocabulary
+
+The offline o200k vocabulary under `src/bloom41/data/` is used for reproducible
+context and document-pass sizing. The upstream tiktoken MIT license is retained
+beside it as `TIKTOKEN-LICENSE.txt`. It is vocabulary data, not model weights.

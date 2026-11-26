@@ -157,10 +157,14 @@ class Tool:
             await writer.wait_closed()
 
     async def model(self, request, *, profile="luna", sources=None):
-        return await self.request("model", request=request, profile=profile, sources=sources or [])
+        self._counter += 1
+        return await self.request(
+            "model", request=request, profile=profile, sources=sources or [], ordinal=self._counter
+        )
 
     async def service(self, name, **arguments):
-        return await self.request("service", name=name, arguments=arguments)
+        self._counter += 1
+        return await self.request("service", name=name, arguments=arguments, ordinal=self._counter)
 
     async def invoke(self, name, arguments):
         """Run a child tool in this same isolated execution, with its own durable receipt."""
