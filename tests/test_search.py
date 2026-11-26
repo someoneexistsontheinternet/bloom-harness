@@ -134,7 +134,16 @@ async def test_search_captures_twenty_reviews_native_images_and_curates_large_se
     provider = Reviewer()
     loop = Loop(tmp_path, provider, trusted_tools=sys.platform != "darwin")
     loop.models.grant(4)
-    loop.services["safari"] = BrowserService(loop.store, Captures)
+    browser_workspace = tmp_path / "existing-granted-helper/workspace"
+
+    class ExistingHelper(Captures):
+        def __init__(self, workspace, operation):
+            assert workspace == browser_workspace
+            super().__init__(workspace, operation)
+
+    loop.services["safari"] = BrowserService(
+        loop.store, ExistingHelper, browser_workspace=browser_workspace
+    )
     await loop.jobs.start()
     try:
         job = loop.jobs.submit(Actor("astra"), "search", {"query": "fixture evidence"})

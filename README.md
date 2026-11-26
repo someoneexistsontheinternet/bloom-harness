@@ -94,11 +94,16 @@ exact fork seeds, cancellation, auth checks, sender preparation, superseding
 queued effects, crash recovery and explicit failed-request recovery. Live
 provider compatibility has not yet been rechecked for v4.1. Retained real Safari
 discussion/table/link captures pass replay with full text and native images
-preserved. The separate helper builds and its signature verifies, but this Mac
-currently denies its new Safari Automation grant; live v4.1 GUI capture remains
-unverified. No production service or gateway deployment is included.
+preserved. The separate helper builds and its signature verifies. After its
+explicit Automation grant, live v4.1 Safari fixtures also passed: whole discussion,
+tables, useful links and native screenshots. No production service or gateway
+deployment is included.
 
 Run `.venv/bin/python scripts/check.py` for the offline checks. CI runs them on
 macOS (real sandbox) and Linux (explicit trusted-tools fixtures), then builds the
 distribution. Neither CI nor the demo needs live provider credentials or browser
 permission grants.
+
+Use `--browser-root EXISTING_PROJECT` to reuse its already prepared and granted
+Safari helper with a fresh `--root`. Only the native helper/lease lives there;
+captured sources, agent history and receipts stay in the new runtime root.

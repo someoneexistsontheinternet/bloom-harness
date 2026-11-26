@@ -26,10 +26,13 @@ def canonical(url):
 class BrowserService:
     """One serial ordinary-Safari lease; callers cannot choose output paths or actors."""
 
-    def __init__(self, store, browser_factory=Safari):
+    def __init__(self, store, browser_factory=Safari, *, browser_workspace=None):
         self.store = store
         self.agents = Agents(store)
         self.browser_factory = browser_factory
+        self.browser_workspace = (
+            Path(browser_workspace).resolve() if browser_workspace else store.root / "workspace"
+        )
         self.lock = asyncio.Lock()
 
     def retain(self, actor, operation, source_id, path, raw, media):
@@ -195,9 +198,7 @@ class BrowserService:
         started = time.monotonic()
         try:
             async with asyncio.timeout(720), self.lock:
-                async with self.browser_factory(
-                    self.store.root / "workspace", operation
-                ) as browser:
+                async with self.browser_factory(self.browser_workspace, operation) as browser:
                     if urls:
                         candidates = [
                             {

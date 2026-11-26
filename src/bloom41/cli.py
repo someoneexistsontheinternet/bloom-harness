@@ -66,7 +66,10 @@ async def execute(args):
     )
     from bloom_safari.service import BrowserService
 
-    loop.services["safari"] = BrowserService(loop.store)
+    loop.services["safari"] = BrowserService(
+        loop.store,
+        browser_workspace=(args.browser_root / "workspace") if args.browser_root else None,
+    )
     try:
         if args.command == "demo":
             loop.models.grant(40)
@@ -145,6 +148,11 @@ async def execute(args):
 def main():
     parser = argparse.ArgumentParser(description="Bloom v4.1 filesystem-agent CLI")
     parser.add_argument("--root", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--browser-root",
+        type=Path,
+        help="Reuse a separately prepared Safari helper root; evidence stays in --root",
+    )
     parser.add_argument("--provider", choices=("codex", "openai"), default="codex")
     parser.add_argument(
         "--trusted-tools",
@@ -195,9 +203,11 @@ def main():
             if args.command == "browser":
                 from bloom_safari.safari_helper import SafariHelper, prepare
 
+                browser_root = (args.browser_root or store.root).resolve()
+
                 if args.operation == "prepare":
                     logs = store.root / "logs/browser-prepare" / uid("local")
-                    print(json.dumps(prepare(store.root, logs), indent=2))
+                    print(json.dumps(prepare(browser_root, logs), indent=2))
                 elif args.operation == "probe":
                     from .agents import Actor
                     from bloom_safari.service import BrowserService
@@ -206,7 +216,7 @@ def main():
                         raise ValueError("browser probe requires one URL")
                     Agents(store).bootstrap()
                     result = asyncio.run(
-                        BrowserService(store)(
+                        BrowserService(store, browser_workspace=browser_root / "workspace")(
                             Actor("astra"),
                             {"id": uid("probe")},
                             {"query": "Verify native text/image capture", "urls": [args.url]},
@@ -237,7 +247,9 @@ def main():
                     if not result["sources"] or any(p["status"] != "ok" for p in result["sources"]):
                         raise SystemExit(2)
                 else:
-                    print(asyncio.run(SafariHelper(store.root / "workspace").call(args.operation)))
+                    print(
+                        asyncio.run(SafariHelper(browser_root / "workspace").call(args.operation))
+                    )
             elif args.command == "init":
                 Agents(store).bootstrap()
                 print(
