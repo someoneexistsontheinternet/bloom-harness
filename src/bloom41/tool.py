@@ -205,12 +205,12 @@ class Tool:
             await nested.request("finish_child", error=type(exc).__name__ + ": " + str(exc))
             raise
 
-    async def result(self, job):
-        return await self.request("result", job_id=job)
+    async def result(self, job, *, wait=False):
+        return await self.request("result", job_id=job, wait=wait)
 
     async def wait_result(self, job):
         while True:
-            result = await self.result(job)
+            result = await self.result(job, wait=True)
             if result["status"] in ("completed", "failed", "cancelled", "uncertain"):
                 return result
             await asyncio.sleep(0.1)

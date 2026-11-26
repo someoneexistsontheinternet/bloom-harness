@@ -180,6 +180,12 @@ class Jobs:
                 raise PermissionError("Execution credential is no longer active")
             value = await self.api(job, packet["action"], packet.get("arguments", {}))
             response = {"value": value}
+        except asyncio.CancelledError:
+            writer.close()
+            self.connections.discard(connection)
+            with contextlib.suppress(Exception):
+                await writer.wait_closed()
+            raise
         except Exception as exc:
             response = {
                 "error": type(exc).__name__ + ": " + str(exc).replace(token, "[REDACTED]")
@@ -242,11 +248,20 @@ class Jobs:
                 return result
             if target["id"] == job["id"]:
                 raise ValueError("A job cannot wait for its own completion")
-            self.state(
-                job["id"],
-                job["status"],
-                waiting_on=target["id"] if target["status"] not in TERMINAL else None,
-            )
+            if arguments.get("wait"):
+                seen, cursor = {job["id"]}, target
+                while cursor["status"] not in TERMINAL:
+                    if cursor["id"] in seen:
+                        raise ValueError("Cyclic tool dependency; no useful result can wake it")
+                    seen.add(cursor["id"])
+                    if not cursor.get("waiting_on"):
+                        break
+                    cursor = self.get(cursor["waiting_on"])
+                self.state(
+                    job["id"],
+                    job["status"],
+                    waiting_on=target["id"] if target["status"] not in TERMINAL else None,
+                )
             return {
                 "id": target["id"],
                 "status": target["status"],
@@ -421,9 +436,13 @@ class Jobs:
                 break
             if job["status"] == "prepared" and not job.get("parent"):
                 self.store.sync()
-                if self.admit and not self.admit(job):
-                    self.state(job["id"], "cancelled", reason="Superseded by newer owner input")
-                    continue
+                if self.admit:
+                    allowed = self.admit(job)
+                    if allowed is False:
+                        self.state(job["id"], "cancelled", reason="Superseded by newer owner input")
+                        continue
+                    if allowed is None:
+                        continue
                 await self.launch(job)
 
     async def cancel(self, job_id):

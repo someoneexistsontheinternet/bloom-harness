@@ -28,6 +28,14 @@ async def run(tool, path: str, start: int = 1, end: int | None = None):
         }
     text = raw.decode()
     lines = text.splitlines(keepends=True)
+    if not lines and start == 1 and end is None:
+        return {
+            "path": str(target),
+            "text": "",
+            "start": 1,
+            "end": 0,
+            "sha256": hashlib.sha256(raw).hexdigest(),
+        }
     last = len(lines) if end is None else end
     if start < 1 or last < start or start > len(lines) + 1:
         raise ValueError("Invalid 1-based inclusive line range")

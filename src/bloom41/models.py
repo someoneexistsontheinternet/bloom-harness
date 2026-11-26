@@ -182,6 +182,25 @@ class Models:
             raise ValueError("Grant a positive call allowance or explicitly unlimited")
         return self.store.event("budget.granted", "workspace", {"calls": calls}, key=uid("grant"))
 
+    def recover(self):
+        """Call only after acquiring the exclusive runner lock."""
+        for row in self.store.events("model.started"):
+            ident = row["data"]["id"]
+            if not self.store.by_key("model-completed:" + ident) and not self.store.by_key(
+                "model-failed:" + ident
+            ):
+                self.store.event(
+                    "model.failed",
+                    row["subject"],
+                    {
+                        "id": ident,
+                        "uncertain": True,
+                        "error": "Previous runner stopped without a terminal response; purchase retained without replay",
+                        "trace": self.store.put([]),
+                    },
+                    key="model-failed:" + ident,
+                )
+
     def allowance(self):
         grants = self.store.events("budget.granted")
         if any(g["data"]["calls"] is None for g in grants):

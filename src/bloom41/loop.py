@@ -451,7 +451,11 @@ class Loop:
 
     def admit_job(self, job):
         turn = self.turn(job.get("turn"))
-        return not turn or not self.preempted(self.jobs.actor(job), turn)
+        if not turn:
+            return True
+        if self.preempted(self.jobs.actor(job), turn):
+            return False
+        return True if turn.get("status", "completed") == "completed" else None
 
     def actor_blocked(self, actor):
         blocked = self.store.latest("actor.blocked", actor.scope)
@@ -715,6 +719,7 @@ class Loop:
 
     async def run(self, *, watch=False, seconds=None):
         await self.jobs.start()
+        self.models.recover()
         self.messages.recover()
         began = time.monotonic()
         try:
@@ -772,7 +777,10 @@ class Loop:
                                 "channel.delivered", package["id"], {"channel": "cli"}, key=key
                             )
                 runnable_jobs = any(
-                    j["status"] in ("prepared", "running", "launching") for j in self.jobs.states()
+                    j["status"] in ("running", "launching")
+                    or j["status"] == "prepared"
+                    and self.admit_job(j) is not None
+                    for j in self.jobs.states()
                 )
                 pending_inboxes = any(self.messages.pending(a) for a in self.scopes())
                 blocked = any(t["status"] == "blocked" for t in self.turns()) or any(

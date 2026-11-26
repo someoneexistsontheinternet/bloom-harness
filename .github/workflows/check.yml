@@ -1,0 +1,22 @@
+name: v4.1 checks
+on:
+  push:
+    branches: [cli-v4.1-experimental]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen --group dev --python 3.12
+      - run: .venv/bin/python scripts/check.py
+      - run: uv build

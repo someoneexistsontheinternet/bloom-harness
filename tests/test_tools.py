@@ -47,6 +47,10 @@ async def test_real_tool_files_and_bash_and_idempotent_start(tmp_path):
         assert done["status"] == "completed", done
         assert store.json(done["result"])["exit_code"] == 7
         assert store.json(done["result"])["stdout"] == "worked"
+        empty = jobs.submit(Actor("astra"), "read_file", {"path": "memory/L0.md"})
+        done = await settled(jobs, empty["id"])
+        assert done["status"] == "completed", done
+        assert store.json(done["result"])["text"] == ""
     finally:
         await jobs.close()
         store.close()

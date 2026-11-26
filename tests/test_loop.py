@@ -339,3 +339,58 @@ async def test_failed_purchase_parks_until_explicit_operator_resume(tmp_path):
     assert provider.owner_calls == 2 and len(loop.messages.pending("user")) == 1, result
     assert len(loop.store.events("model.failed")) == 1
     loop.store.close()
+
+
+async def test_blocked_dispatch_holds_prepared_effect_and_runner_returns(tmp_path):
+    import asyncio
+
+    loop = Loop(tmp_path, Conversation(), trusted_tools=sys.platform != "darwin")
+    loop.save_turn(
+        {
+            "id": "blocked-dispatch",
+            "scope": "astra",
+            "agent": "astra",
+            "branch": None,
+            "status": "blocked",
+            "input_ids": [],
+            "error": "Interrupted output preparation",
+        }
+    )
+    job = loop.jobs.submit(
+        Actor("astra"),
+        "edit_file",
+        {"path": "uncommitted.txt", "text": "not admitted"},
+        turn="blocked-dispatch",
+    )
+    await asyncio.wait_for(loop.run(), 1)
+    assert loop.jobs.get(job["id"])["status"] == "prepared"
+    assert not (loop.agents.path("astra") / "work/uncommitted.txt").exists()
+    loop.store.close()
+
+
+async def test_shutdown_records_terminal_receipts_for_tool_model_consultations(tmp_path):
+    import asyncio
+    from test_models_context import Scripted
+
+    began = asyncio.Event()
+
+    class Pending(Scripted):
+        async def generate(self, request):
+            began.set()
+            await asyncio.Event().wait()
+
+    loop = Loop(tmp_path, Pending(), trusted_tools=sys.platform != "darwin")
+    loop.models.grant(1)
+    (loop.agents.path("astra") / "tools/consult.py").write_text('''async def run(tool):
+    """Consult a reader while retaining the owning job."""
+    return await tool.model("Check this fixture")
+''')
+    loop.jobs.submit(Actor("astra"), "consult", {})
+    runner = asyncio.create_task(loop.run(watch=True))
+    await asyncio.wait_for(began.wait(), 3)
+    loop.stopping = True
+    await asyncio.wait_for(runner, 3)
+    assert len(loop.store.events("model.started")) == 1
+    assert len(loop.store.events("model.failed")) == 1
+    assert not loop.jobs.connections
+    loop.store.close()

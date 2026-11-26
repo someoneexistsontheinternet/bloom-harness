@@ -3,6 +3,7 @@
 A fresh CLI implementation on `cli-v4.1-experimental`, from public main.
 Filesystem inbox → recipient Terra → persistent agent → filesystem outbound.
 The design and acceptance criteria are in [docs/design.md](docs/design.md).
+The object map and filesystem tree are in [docs/layout.md](docs/layout.md).
 
 The common loop, native provider adapter, durable messages and isolated tool
 runner are implemented. Persistent Astra/Sol identities share the same loop;
@@ -88,7 +89,7 @@ Working defaults are 20k tokens for Terra, 250k after three inputs for owners
 (450k pressure boundary), and 500k for temporary branches. These are compaction
 thresholds, not lower model capacities; all configured windows remain 1M.
 
-Current verification: 35 offline tests pass, including executable CLI exchange,
+Current verification: 38 offline tests pass, including executable CLI exchange,
 exact fork seeds, cancellation, auth checks, sender preparation, superseding
 queued effects, crash recovery and explicit failed-request recovery. Live
 provider compatibility has not yet been rechecked for v4.1. Retained real Safari
@@ -96,3 +97,8 @@ discussion/table/link captures pass replay with full text and native images
 preserved. The separate helper builds and its signature verifies, but this Mac
 currently denies its new Safari Automation grant; live v4.1 GUI capture remains
 unverified. No production service or gateway deployment is included.
+
+Run `.venv/bin/python scripts/check.py` for the offline checks. CI runs them on
+macOS (real sandbox) and Linux (explicit trusted-tools fixtures), then builds the
+distribution. Neither CI nor the demo needs live provider credentials or browser
+permission grants.

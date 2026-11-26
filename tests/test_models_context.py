@@ -108,6 +108,25 @@ async def test_cancelled_inference_has_a_terminal_receipt(tmp_path):
     store.close()
 
 
+async def test_recovery_settles_an_interrupted_purchase_without_replaying(tmp_path):
+    store = Store(tmp_path)
+    provider = Scripted()
+    models = Models(store, provider)
+    models.grant(2)
+    store.event(
+        "model.started",
+        "astra",
+        {"id": "lost", "request": store.put({"input": []})},
+        key="model-started:lost",
+    )
+    models.recover()
+    assert store.by_key("model-failed:lost")["data"]["uncertain"]
+    with pytest.raises(ModelFailure):
+        await models.call(Actor("astra"), {"input": []}, call_id="lost")
+    assert not provider.requests
+    store.close()
+
+
 async def test_real_http_adapter_uses_fake_transport_without_credentials(tmp_path):
     requests = []
 
