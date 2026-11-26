@@ -80,7 +80,7 @@ final class Engine: @unchecked Sendable {
             } else {
                 let status = permission(false)
                 guard status == noErr else {
-                    throw Failure(kind: "permission", message: "Bloom Browser Helper needs Safari Automation access (\(status)). Open its setup window; service requests never prompt automatically.")
+                    throw Failure(kind: "permission", message: "Bloom v4.1 Browser Helper needs Safari Automation access (\(status)). Open its setup window; service requests never prompt automatically.")
                 }
                 guard !expired() else { throw Failure(kind: "expired", message: "Safari request expired during the permission check; no operation started") }
                 if action == "check" {
@@ -188,7 +188,7 @@ final class Helper: NSObject, NSApplicationDelegate {
         if window == nil {
             let view = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 570, height: 230),
                 styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-            view.title = "Bloom Browser Helper — Safari Access"
+            view.title = "Bloom v4.1 Browser Helper — Safari Access"
             let title = NSTextField(labelWithString: "Bloom’s signed-in Safari connection")
             title.font = .boldSystemFont(ofSize: 20); title.frame = NSRect(x: 24, y: 177, width: 522, height: 28)
             let description = NSTextField(wrappingLabelWithString: "Bloom uses this named helper to open and read its own Safari research windows. Your existing Safari sessions stay in Safari. Service requests never display permission prompts.")

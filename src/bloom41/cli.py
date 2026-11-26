@@ -64,6 +64,9 @@ async def execute(args):
         trusted_tools=args.trusted_tools,
         output=lambda text: print(text, flush=True),
     )
+    from bloom_safari.service import BrowserService
+
+    loop.services["safari"] = BrowserService(loop.store)
     try:
         if args.command == "demo":
             loop.models.grant(40)
@@ -155,6 +158,12 @@ def main():
     sub.add_parser("usage")
     sub.add_parser("reindex")
     sub.add_parser("demo")
+    browser = sub.add_parser(
+        "browser",
+        help="Prepare/check the separate v4.1 native helper; setup alone opens the permission UI",
+    )
+    browser.add_argument("operation", choices=("prepare", "check", "setup", "probe"))
+    browser.add_argument("url", nargs="?")
     resume = sub.add_parser(
         "resume", help="Inspect receipts first; explicitly permit another decision after failure"
     )
@@ -183,7 +192,53 @@ def main():
             raise SystemExit(asyncio.run(execute(args)))
         store = Store(args.root)
         try:
-            if args.command == "init":
+            if args.command == "browser":
+                from bloom_safari.safari_helper import SafariHelper, prepare
+
+                if args.operation == "prepare":
+                    logs = store.root / "logs/browser-prepare" / uid("local")
+                    print(json.dumps(prepare(store.root, logs), indent=2))
+                elif args.operation == "probe":
+                    from .agents import Actor
+                    from bloom_safari.service import BrowserService
+
+                    if not args.url:
+                        raise ValueError("browser probe requires one URL")
+                    Agents(store).bootstrap()
+                    result = asyncio.run(
+                        BrowserService(store)(
+                            Actor("astra"),
+                            {"id": uid("probe")},
+                            {"query": "Verify native text/image capture", "urls": [args.url]},
+                        )
+                    )
+                    print(json.dumps({k: v for k, v in result.items() if k != "sources"}, indent=2))
+                    print(
+                        json.dumps(
+                            {
+                                "sources": [
+                                    {
+                                        k: p.get(k)
+                                        for k in (
+                                            "id",
+                                            "status",
+                                            "text_characters",
+                                            "text_path",
+                                            "images",
+                                            "error",
+                                        )
+                                    }
+                                    for p in result["sources"]
+                                ]
+                            },
+                            indent=2,
+                        )
+                    )
+                    if not result["sources"] or any(p["status"] != "ok" for p in result["sources"]):
+                        raise SystemExit(2)
+                else:
+                    print(asyncio.run(SafariHelper(store.root / "workspace").call(args.operation)))
+            elif args.command == "init":
                 Agents(store).bootstrap()
                 print(
                     json.dumps(

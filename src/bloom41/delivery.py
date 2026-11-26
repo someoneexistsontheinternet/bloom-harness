@@ -47,7 +47,7 @@ class Delivery:
         return path
 
     def attachment(self, actor, job, name, source, *, expose="inline", provenance=None):
-        ident = "attachment_" + digest(encoded([job["id"], name, source]))[:24]
+        ident = "attachment_" + digest(encoded([job["id"], name, source, expose]))[:24]
         data = {
             "id": ident,
             "job": job["id"],
@@ -62,7 +62,8 @@ class Delivery:
 
     async def attach_file(self, actor, job, args):
         path = self.path(actor, args["path"])
-        key = "file-attachment:" + digest(encoded([job["id"], str(path)]))
+        reference = args.get("reference", False)
+        key = "file-attachment:" + digest(encoded([job["id"], str(path), reference]))
         old = self.store.by_key(key)
         if old:
             return old["data"]
@@ -78,14 +79,14 @@ class Delivery:
             job,
             path.name,
             source,
-            expose="reference" if needs_extraction else "inline",
+            expose="reference" if needs_extraction or reference else "inline",
             provenance={"path": str(path), "sha256": source["sha256"]},
         )
         snapshot = self.agents.path(actor) / "work/.sources" / source["sha256"] / path.name
         atomic(snapshot, raw)
         result = {
             "id": record["id"],
-            "needs_extraction": needs_extraction,
+            "needs_extraction": needs_extraction and not reference,
             "snapshot_path": str(snapshot),
         }
         self.store.event("attachment.file", actor.scope, result, key=key)
@@ -109,6 +110,10 @@ class Delivery:
             for path in dict.fromkeys(paths):
                 if isinstance(path, str):
                     attached = await self.attach_file(actor, job, {"path": path})
+                    related.append(attached["id"])
+            for path in dict.fromkeys(output.get("reference_files", [])):
+                if isinstance(path, str):
+                    attached = await self.attach_file(actor, job, {"path": path, "reference": True})
                     related.append(attached["id"])
         return {
             **record,

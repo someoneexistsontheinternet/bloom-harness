@@ -1,0 +1,204 @@
+import base64
+import json
+from pathlib import Path
+import re
+import sys
+from urllib.parse import parse_qs, urlsplit
+
+import pytest
+
+from bloom41.agents import Actor
+from bloom41.context import Context
+from bloom41.loop import Loop
+from bloom_safari.service import BrowserService, canonical
+from bloom_safari.web_document import page_document
+from test_delivery import done
+from test_models_context import Scripted, reply
+
+PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII="
+)
+
+
+class Captures:
+    calls = []
+
+    def __init__(self, workspace, operation):
+        self.operation = operation
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        pass
+
+    async def discover_page(self, url):
+        start = int(parse_qs(urlsplit(url).query)["start"][0])
+        return {
+            "url": url,
+            "results": [
+                {
+                    "url": f"https://example.test/page/{n}?utm_source=fixture",
+                    "title": f"Document {n}",
+                }
+                for n in range(start, start + 10)
+            ],
+        }
+
+    async def capture(self, url, destination, **geometry):
+        self.calls.append((url, geometry))
+        number = int(urlsplit(url).path.rsplit("/", 1)[1])
+        if number == 19:
+            raise PermissionError("Fixture page blocked")
+        destination.mkdir(parents=True, exist_ok=True)
+        image = destination / "native.png"
+        image.write_bytes(PNG)
+        text = (
+            ("evidence from source zero\n" * 2200)
+            if number == 0
+            else f"Whole document {number}. Table: 2 | 4. Ref: https://example.test/original"
+        )
+        return {
+            "status": "ok",
+            "url": url,
+            "title": f"Title {number}",
+            "text": text,
+            "text_format": "document_markdown",
+            "tables": ["RAW_TABLE_SENTINEL"],
+            "links": ["RAW_LINK_SENTINEL"],
+            "headings": ["RAW_HEADING_SENTINEL"],
+            "coverage": {"text": "whole loaded document"},
+            "capture_coverage": [{"start_y": 0, "end_y": 512}],
+            "images": [{"path": str(image), "mime": "image/png", "width": 1, "height": 1}],
+            "more_below": True,
+        }
+
+
+class Reviewer(Scripted):
+    async def generate(self, request):
+        self.requests.append(request)
+        text = json.dumps(request)
+        assert (
+            "RAW_TABLE_SENTINEL" not in text
+            and "RAW_LINK_SENTINEL" not in text
+            and "RAW_HEADING_SENTINEL" not in text
+        )
+        content = request["input"][0]["content"]
+        if "Review ALL" in content[0]["text"]:
+            packet = json.loads(content[1]["text"])
+            docs = packet["documents"]
+            assert len(docs) == 20
+            assert len(docs[0]["text"]) > 50_000
+            assert docs[19]["status"] == "capture_failed"
+            assert len([p for p in content if p["type"] == "input_image"]) == 19
+            review = {
+                "selected": [d["id"] for d in docs[:3]],
+                "visual": [docs[1]["id"]],
+                "sources": [
+                    {
+                        "id": d["id"],
+                        "summary": "capture failed"
+                        if d["status"] == "capture_failed"
+                        else "reviewed source",
+                        "reason": "relevance decision",
+                        "visual_reason": "only source one adds a chart",
+                    }
+                    for d in docs
+                ],
+                "coverage": "Whole text and native screenshot strips; more content below.",
+                "limitations": ["One page blocked"],
+                "insufficient_relevant_sources": False,
+            }
+            return reply(json.dumps(review)), []
+        # Exact numbered extraction for the large selected source, after review.
+        assert "source zero" in text
+        return reply(
+            json.dumps(
+                {
+                    "relevant": True,
+                    "summary": "Evidence selected from the full source",
+                    "passages": [
+                        {
+                            "start_line": 1,
+                            "end_line": 1,
+                            "above_summary": "Beginning of the source",
+                            "below_summary": "The document repeats this evidence",
+                        }
+                    ],
+                }
+            )
+        ), []
+
+
+async def test_search_captures_twenty_reviews_native_images_and_curates_large_selection(tmp_path):
+    provider = Reviewer()
+    loop = Loop(tmp_path, provider, trusted_tools=sys.platform != "darwin")
+    loop.models.grant(4)
+    loop.services["safari"] = BrowserService(loop.store, Captures)
+    await loop.jobs.start()
+    try:
+        job = loop.jobs.submit(Actor("astra"), "search", {"query": "fixture evidence"})
+        completed = await done(loop.jobs, job["id"])
+        assert completed["status"] == "completed", completed
+        result = loop.store.json(completed["result"])
+        assert result["status"] == "completed", result
+        assert len(result["candidates"]) == 20 and len(result["selected"]) == 3
+        large = result["selected"][0]
+        assert "text" not in large and "evidence" in large, large
+        assert large["evidence"]["passages"][0]["text"] == "evidence from source zero"
+        assert result["files"] and len(provider.requests) == 2
+        # A later user-facing tool result embeds selected native bytes and no full large text.
+        await loop.notify_jobs()
+        package = loop.messages.pending(Actor("astra"))[0]
+        content = Context(loop.store).content(package)["content"]
+        assert len([p for p in content if p["type"] == "input_image"]) == 1
+        assert "RAW_TABLE_SENTINEL" not in json.dumps(content)
+        source = loop.store.events("web.source")[0]
+        original = loop.store.json(source["data"]["source"])
+        assert original["tables"] == ["RAW_TABLE_SENTINEL"]
+        assert (
+            Path(original["original_text_path"]).read_text() == "evidence from source zero\n" * 2200
+        )
+        assert all(
+            r["data"]["purpose"] == "tool_reader" for r in loop.store.events("model.started")
+        )
+    finally:
+        await loop.jobs.close()
+        loop.store.close()
+
+
+async def test_missing_browser_permission_produces_explicit_result_without_model_calls(tmp_path):
+    class Denied(Captures):
+        async def __aenter__(self):
+            raise PermissionError("Separate v4.1 Automation grant required")
+
+    provider = Scripted()
+    loop = Loop(tmp_path, provider, trusted_tools=sys.platform != "darwin")
+    loop.services["safari"] = BrowserService(loop.store, Denied)
+    await loop.jobs.start()
+    try:
+        job = loop.jobs.submit(Actor("astra"), "search", {"query": "fixture"})
+        state = await done(loop.jobs, job["id"])
+        assert state["status"] == "completed", state
+        result = loop.store.json(state["result"])
+        assert result["status"] == "capture_failed" and "Automation grant" in result["error"]
+        assert not provider.requests and loop.store.events("web.completed")
+    finally:
+        await loop.jobs.close()
+        loop.store.close()
+
+
+def test_document_projection_and_canonical_url():
+    source = {
+        "text": "full legitimate discussion",
+        "tables": ["duplicate"],
+        "links": ["duplicate"],
+        "images": ["native metadata"],
+    }
+    assert page_document(source)["text"] == source["text"]
+    assert not set(("tables", "links", "images")) & page_document(source).keys()
+    assert (
+        canonical("https://example.test/a?x=1&utm_source=z#anchor") == "https://example.test/a?x=1"
+    )
+    with pytest.raises(ValueError):
+        canonical("https://private:password@example.test")

@@ -104,6 +104,7 @@ class Loop:
                 ".gif": "image/gif",
             }.get(path.suffix.lower())
             if media:
+                parts.append({"type": "input_text", "text": "Native image source: " + str(path)})
                 parts.append(
                     {
                         "type": "input_image",
@@ -368,6 +369,36 @@ class Loop:
                 attachments = [
                     self.store.by_key(i)["data"] for i in [item["id"], *item.get("related", [])]
                 ]
+                if item["needs_extraction"]:
+                    curated = self.jobs.submit(
+                        actor,
+                        "extract",
+                        {
+                            "path": item["snapshot_path"],
+                            "question": "Prepare this tool result for its owner. Preserve requested findings, failures, unfinished work and exact source paths. Original tool: "
+                            + job["name"],
+                        },
+                        job_id="curate_" + digest(job["id"].encode())[:24],
+                        turn=job.get("turn"),
+                        wake=False,
+                    )
+                    if curated["status"] not in TERMINAL:
+                        continue
+                    selected = (
+                        self.store.json(curated["result"])
+                        if curated.get("result")
+                        else {
+                            "curation_error": curated.get("error") or curated["status"],
+                            "notice": "Full original retained as a reference. Request a narrower extract if needed.",
+                        }
+                    )
+                    prepared = await self.delivery.attach_value(
+                        actor, job, {"name": "selected-result.json", "value": selected}
+                    )
+                    attachments.extend(
+                        self.store.by_key(i)["data"]
+                        for i in [prepared["id"], *prepared.get("related", [])]
+                    )
                 source_turn = self.turn(job["turn"]) if job.get("turn") else None
                 self.messages.deliver(
                     "tool:" + job["name"],

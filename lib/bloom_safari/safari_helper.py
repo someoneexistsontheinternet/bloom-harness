@@ -18,7 +18,9 @@ from .privacy import clean
 from .store import atomic, encoded
 
 ASSETS = Path(__file__).with_name("web_assets")
-IDENTIFIER = "dev.bloom.browser-helper"
+IDENTIFIER = "dev.bloom.v41.browser-helper"
+APP_NAME = "Bloom v4.1 Browser Helper"
+EXECUTABLE = "Bloom41BrowserHelper"
 PROTOCOL = 1
 COUNTS = {
     "open": 0,
@@ -35,7 +37,7 @@ FILES = ("request.json", "started.json", "response.json", "cancelled", "stdout.t
 
 def layout(workspace):
     web = Path(workspace).resolve() / "web"
-    return web, web / "native" / "Bloom Browser Helper.app", web / "native" / "browser-helper.json"
+    return web, web / "native" / (APP_NAME + ".app"), web / "native" / "browser-helper.json"
 
 
 def fingerprint(workspace):
@@ -44,6 +46,7 @@ def fingerprint(workspace):
         digest.update(name.encode())
         digest.update((ASSETS / name).read_bytes())
     digest.update(str(PROTOCOL).encode())
+    digest.update(IDENTIFIER.encode())
     return digest.hexdigest()
 
 
@@ -67,17 +70,17 @@ def prepare(root, log_directory):
             [
                 "/usr/bin/pgrep",
                 "-f",
-                "/Bloom Browser Helper[.]app/Contents/MacOS/BloomBrowserHelper$",
+                "/Bloom v4[.]1 Browser Helper[.]app/Contents/MacOS/Bloom41BrowserHelper$",
             ],
             capture_output=True,
         ).returncode
         == 0
     ):
-        raise RuntimeError("Close Bloom Browser Helper before preparing a different build")
+        raise RuntimeError("Close Bloom v4.1 Browser Helper before preparing a different build")
     log_directory = Path(log_directory)
     log_directory.mkdir(parents=True, exist_ok=True)
     app.parent.mkdir(parents=True, exist_ok=True)
-    pending = app.with_name("Bloom Browser Helper.build-" + uuid.uuid4().hex + ".app")
+    pending = app.with_name(APP_NAME + ".build-" + uuid.uuid4().hex + ".app")
     (pending / "Contents/MacOS").mkdir(parents=True)
     (pending / "Contents/Resources").mkdir()
     shutil.copyfile(
@@ -85,9 +88,9 @@ def prepare(root, log_directory):
     )
     info = {
         "CFBundleIdentifier": IDENTIFIER,
-        "CFBundleName": "Bloom Browser Helper",
-        "CFBundleDisplayName": "Bloom Browser Helper",
-        "CFBundleExecutable": "BloomBrowserHelper",
+        "CFBundleName": APP_NAME,
+        "CFBundleDisplayName": APP_NAME,
+        "CFBundleExecutable": EXECUTABLE,
         "CFBundlePackageType": "APPL",
         "CFBundleVersion": "1",
         "CFBundleShortVersionString": "0.1",
@@ -110,7 +113,7 @@ def prepare(root, log_directory):
             str(web / "native/module-cache"),
             str(ASSETS / "browser_helper.swift"),
             "-o",
-            str(pending / "Contents/MacOS/BloomBrowserHelper"),
+            str(pending / "Contents/MacOS" / EXECUTABLE),
         ],
         [
             "/usr/bin/codesign",
@@ -155,7 +158,7 @@ def prepare(root, log_directory):
         "bundle_id": IDENTIFIER,
         "signature": "local ad-hoc; binary updates can require a new OS grant",
         "executable_sha256": hashlib.sha256(
-            (app / "Contents/MacOS/BloomBrowserHelper").read_bytes()
+            (app / "Contents/MacOS" / EXECUTABLE).read_bytes()
         ).hexdigest(),
         "prepared_at": time.time(),
     }
@@ -173,7 +176,7 @@ class SafariHelper:
     def manifest(self):
         if not self.manifest_path.is_file() or not self.app.is_dir():
             raise RuntimeError(
-                "Bloom Browser Helper is not prepared. Run python -m bloom.safari_helper prepare --root PROJECT with the project interpreter."
+                "Bloom v4.1 Browser Helper is not prepared. Run bloom41 --root PROJECT browser prepare with the project interpreter."
             )
         value = json.loads(self.manifest_path.read_text())
         if (

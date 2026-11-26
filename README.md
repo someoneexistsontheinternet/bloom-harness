@@ -62,10 +62,29 @@ Elsewhere, arbitrary scripts require explicit `--trusted-tools`; there is no
 claim of OS isolation in that mode. This is tested filesystem/API isolation,
 not comprehensive protection against every OS exploit.
 
-Current verification: 24 offline tests pass, including executable CLI exchange,
+Safari search is connected through a scoped browser service. `search.py` owns the
+20-candidate whole-document/native-image review and subsequent numbered extraction
+of selected text over 50k characters. Saved originals and capture failures remain
+available. The separate **Bloom v4.1 Browser Helper** does not replace v3's helper.
+
+```sh
+.venv/bin/bloom41 --root YOUR_WORKSPACE browser prepare
+.venv/bin/bloom41 --root YOUR_WORKSPACE browser setup
+.venv/bin/bloom41 --root YOUR_WORKSPACE browser check
+```
+
+Setup opens the explicit macOS permission UI. Service requests never request a
+grant automatically. `browser probe URL` captures a single page without model
+inference. Source updates can require rebuilding and a new OS grant; active helper
+bundles are never replaced. `scripts/check_web.py` supports retained capture replay
+and an opt-in live local HTML regression.
+
+Current verification: 27 offline tests pass, including executable CLI exchange,
 exact fork seeds, cancellation, auth checks, sender preparation, superseding
 queued effects, crash recovery and explicit failed-request recovery. Live
-provider compatibility has not yet been rechecked for v4.1. The preserved Safari
-capture implementation under `lib/bloom_safari` is being connected next; live
-GUI capture and full memory/compaction checks remain unfinished. No production
-service or gateway deployment is included.
+provider compatibility has not yet been rechecked for v4.1. Retained real Safari
+discussion/table/link captures pass replay with full text and native images
+preserved. The separate helper builds and its signature verifies, but this Mac
+currently denies its new Safari Automation grant; live v4.1 GUI capture remains
+unverified. Full memory/compaction checks are next. No production service or
+gateway deployment is included.

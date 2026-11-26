@@ -349,6 +349,21 @@ class Safari:
                 "more_below": page["page_height"] > cursor,
                 "safari_session": "ordinary signed-in Safari, task-owned window; no cookie export",
             }
+        except NavigationChanged:
+            raise
+        except Exception as exc:
+            # Retain the complete extracted document when only screenshot capture failed.
+            return {
+                **page,
+                "status": "partial",
+                "images": [],
+                "captured_at": now(),
+                "capture_started_at": started,
+                "capture_coverage": coverage,
+                "more_below": page.get("page_height", 0) > cursor,
+                "error": "Native screenshot incomplete: " + clean(str(exc)),
+                "elapsed_seconds": round(time.monotonic() - clock, 3),
+            }
         finally:
             if success:
                 for part in parts:
