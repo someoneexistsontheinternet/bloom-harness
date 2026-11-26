@@ -100,13 +100,18 @@ arrives for the same owner.
 Current verification: 43 offline tests pass, including executable CLI exchange,
 exact fork seeds, cancellation, auth checks, sender preparation, superseding
 queued effects, crash recovery and explicit failed-request recovery. Live
-provider transport and native tools have now been exercised in the first live
-market run; full workload verification is ongoing. Retained real Safari
+provider transport, native tools and sequential conversation reuse have now been
+verified live, with both requested answers delivered from the same workspace. Retained real Safari
 discussion/table/link captures pass replay with full text and native images
 preserved. The separate helper builds and its signature verifies. After its
 explicit Automation grant, live v4.1 Safari fixtures also passed: whole discussion,
 tables, useful links and native screenshots. No production service or gateway
 deployment is included.
+
+A user-inbox answer does not terminate other agents' outstanding work. `run` may
+therefore reach its allowance and exit with status 2 after delivering an answer;
+inspect the inbox and run status separately. Unstarted budget-blocked work remains
+available for an explicit later continuation.
 
 Run `.venv/bin/python scripts/check.py` for the offline checks. CI runs them on
 macOS (real sandbox) and Linux (explicit trusted-tools fixtures), then builds the
