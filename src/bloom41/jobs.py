@@ -491,11 +491,12 @@ class Jobs:
                     await task
         if self.server:
             self.server.close()
-            await self.server.wait_closed()
         connections = list(self.connections)
         for task in connections:
             task.cancel()
         await asyncio.gather(*connections, return_exceptions=True)
+        if self.server:
+            await self.server.wait_closed()
         (self.store.control / "broker.json").unlink(missing_ok=True)
         if self.lock:
             self.lock.close()
