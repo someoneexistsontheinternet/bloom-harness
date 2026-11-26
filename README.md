@@ -43,6 +43,10 @@ The default provider uses an existing Codex login; `--provider openai` uses
 initialization start no inference. The default allowance is zero and every
 owner/helper request counts. All profiles retain a configured 1M capacity; the
 local admission check counts text and reserves output space, not exact image cost.
+Provider requests have a 180-second network inactivity timeout and a separate
+900-second overall deadline. Active streaming can exceed the idle timeout. The
+CLI exposes these as `--idle-timeout` and `--request-deadline`; timeouts retain the
+partial stream and an uncertain terminal receipt instead of retrying a purchase.
 
 `chat` accepts input continuously; `/urgent`, `/status` and `/quit` are available.
 `run --watch` waits for new input. `inbox`, `usage`, `tools` and `reindex` inspect

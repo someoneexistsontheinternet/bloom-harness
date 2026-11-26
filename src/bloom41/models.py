@@ -49,7 +49,14 @@ class Responses:
     simulated = False
 
     def __init__(
-        self, kind="codex", *, base_url=None, timeout=180, transport=None, output_tokens=32768
+        self,
+        kind="codex",
+        *,
+        base_url=None,
+        timeout=180,
+        deadline=900,
+        transport=None,
+        output_tokens=32768,
     ):
         if kind not in ("codex", "openai"):
             raise ValueError("Choose codex or openai")
@@ -63,6 +70,7 @@ class Responses:
             )
         ).rstrip("/")
         self.timeout = timeout
+        self.deadline = deadline
         self.transport = transport
         self.output_tokens = output_tokens
         self.secrets = []
@@ -113,7 +121,7 @@ class Responses:
         trace = []
         try:
             async with (
-                asyncio.timeout(self.timeout),
+                asyncio.timeout(self.deadline),
                 httpx.AsyncClient(timeout=self.timeout, transport=self.transport) as client,
             ):
                 async with client.stream(

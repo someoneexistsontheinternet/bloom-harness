@@ -154,6 +154,31 @@ async def test_real_http_adapter_uses_fake_transport_without_credentials(tmp_pat
     assert requests[0]["max_output_tokens"] == 32768
 
 
+async def test_active_stream_can_outlast_idle_timeout_but_has_an_overall_deadline():
+    class Stream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            for _ in range(4):
+                await asyncio.sleep(0.03)
+                yield b'data: {"type":"response.in_progress"}\n\n'
+            yield (
+                "data: "
+                + json.dumps({"type": "response.completed", "response": reply("finished stream")})
+                + "\n\n"
+            ).encode()
+
+    async def handle(request):
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=Stream())
+
+    provider = Responses("openai", timeout=0.05, deadline=1, transport=httpx.MockTransport(handle))
+    provider.headers = lambda: {}
+    response, trace = await provider.generate({"input": [], "stream": True})
+    assert final_text(response) == "finished stream" and len(trace) == 5
+    provider.deadline = 0.06
+    with pytest.raises(ModelFailure, match="TimeoutError") as failed:
+        await provider.generate({"input": [], "stream": True})
+    assert failed.value.trace
+
+
 def test_context_keeps_native_items_and_image_bytes_and_fork_seed(tmp_path):
     store = Store(tmp_path)
     agents = Agents(store)

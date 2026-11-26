@@ -211,3 +211,35 @@ def test_document_projection_and_canonical_url():
     )
     with pytest.raises(ValueError):
         canonical("https://private:password@example.test")
+
+
+async def test_internal_safari_error_page_is_not_reviewed_as_a_successful_source(tmp_path):
+    class ErrorPage(Captures):
+        async def capture(self, url, destination, **geometry):
+            page = await super().capture(url, destination, **geometry)
+            return {
+                **page,
+                "url": "safari-resource:/ErrorPage.html",
+                "text": "Safari could not open the requested page.",
+            }
+
+    provider = Scripted()
+    loop = Loop(tmp_path, provider, trusted_tools=sys.platform != "darwin")
+    loop.services["safari"] = BrowserService(loop.store, ErrorPage)
+    await loop.jobs.start()
+    try:
+        job = loop.jobs.submit(
+            Actor("astra"), "search", {"query": "fixture", "urls": ["https://example.test/page/0"]}
+        )
+        state = await done(loop.jobs, job["id"])
+        result = loop.store.json(state["result"])
+        assert result["status"] == "capture_failed" and not provider.requests
+        manifest = loop.store.json(loop.store.events("web.source")[0]["data"]["source"])
+        assert manifest["status"] == "capture_failed" and "internal error page" in manifest["error"]
+        assert (
+            Path(manifest["text_path"]).read_text() == "Safari could not open the requested page."
+        )
+        assert Path(manifest["images"][0]["path"]).read_bytes() == PNG
+    finally:
+        await loop.jobs.close()
+        loop.store.close()

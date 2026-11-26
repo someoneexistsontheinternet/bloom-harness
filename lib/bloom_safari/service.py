@@ -59,6 +59,12 @@ class BrowserService:
             "job": job["id"],
             "turn": job.get("turn"),
         }
+        if urlsplit(manifest["url"]).scheme not in ("http", "https"):
+            manifest["status"] = "capture_failed"
+            manifest["error"] = (
+                "Safari ended on an internal error page instead of the requested web document: "
+                + manifest["url"]
+            )
         text = manifest.pop("text", "")
         ref = self.retain(
             actor, operation, source["id"], folder / "page.txt", text.encode(), "text/plain"

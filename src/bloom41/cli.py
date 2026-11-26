@@ -56,7 +56,9 @@ async def execute(args):
             raise ValueError("Use a fresh --root for the explicitly scripted demo")
         provider = DemoProvider()
     else:
-        provider = Responses(args.provider)
+        provider = Responses(
+            args.provider, timeout=args.idle_timeout, deadline=args.request_deadline
+        )
     loop = Loop(
         args.root,
         provider,
@@ -160,6 +162,18 @@ def main():
         help="Explicitly allow trusted scripts when no OS sandbox exists",
     )
     parser.add_argument("--heartbeat", type=float, default=5.0)
+    parser.add_argument(
+        "--idle-timeout",
+        type=float,
+        default=180,
+        help="Provider network inactivity timeout in seconds",
+    )
+    parser.add_argument(
+        "--request-deadline",
+        type=float,
+        default=900,
+        help="Overall provider request deadline, including active streaming",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("init")
     sub.add_parser("status")
@@ -195,6 +209,8 @@ def main():
     tools = sub.add_parser("tools")
     tools.add_argument("agent", nargs="?", default="astra")
     args = parser.parse_args()
+    if args.idle_timeout <= 0 or args.request_deadline <= 0:
+        parser.error("Provider timeouts must be positive")
     try:
         if args.command in ("run", "chat", "demo", "resume"):
             raise SystemExit(asyncio.run(execute(args)))
