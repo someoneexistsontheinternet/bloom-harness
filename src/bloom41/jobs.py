@@ -11,6 +11,7 @@ from pathlib import Path
 import signal
 import sys
 import time
+from datetime import datetime
 
 import jsonschema
 
@@ -39,17 +40,20 @@ def sandbox_profile(read_paths, write_paths):
 
 
 class Jobs:
-    def __init__(self, store, handlers=None, *, trusted_tools=False, limit=4):
+    def __init__(self, store, handlers=None, *, trusted_tools=False, limit=4, timeout=900):
         self.store = store
         self.agents = Agents(store)
         self.handlers = handlers or {}
         self.trusted_tools = trusted_tools
         self.limit = limit
+        self.timeout = timeout
         self.address = None
         self.server = None
         self.running = {}
         self.secret = (store.control / "master.key").read_bytes()
         self.lock = None
+        self.connections = set()
+        self.admit = None
 
     def get(self, job):
         row = self.store.latest("job.state", job)
@@ -163,6 +167,8 @@ class Jobs:
                 )
 
     async def _connection(self, reader, writer):
+        connection = asyncio.current_task()
+        self.connections.add(connection)
         token = ""
         try:
             packet = json.loads(await asyncio.wait_for(reader.readline(), 30))
@@ -187,6 +193,7 @@ class Jobs:
             writer.close()
             with contextlib.suppress(Exception):
                 await writer.wait_closed()
+            self.connections.discard(connection)
 
     async def api(self, job, action, arguments):
         if action in ("finish", "finish_child"):
@@ -197,6 +204,8 @@ class Jobs:
             value = self.clean(arguments.get("value"))
             return self.state(job["id"], "completed", result=self.store.put(value))
         if action == "prepare_child":
+            if self.admit and not self.admit(job):
+                raise PermissionError("New owner input superseded this unstarted child action")
             ordinal = arguments["ordinal"]
             if type(ordinal) is not int or ordinal < 1:
                 raise ValueError("Invalid child ordinal")
@@ -363,16 +372,43 @@ class Jobs:
             )
         else:
             self.state(job_id, job["status"], exit_code=proc.returncode)
+        pending = {job_id}
+        while pending:
+            children = [
+                j
+                for j in self.states()
+                if j.get("parent") in pending and j["status"] not in TERMINAL
+            ]
+            pending = {j["id"] for j in children}
+            for child in children:
+                self.state(
+                    child["id"],
+                    "uncertain",
+                    error="Parent executor stopped before the child result receipt",
+                )
 
     async def pump(self):
         for ident, (_, task) in list(self.running.items()):
             if task.done():
                 await task
                 del self.running[ident]
+            elif (
+                self.timeout
+                and time.time() - datetime.fromisoformat(self.get(ident)["launched_at"]).timestamp()
+                > self.timeout
+            ):
+                await self.cancel(ident)
+                self.state(
+                    ident, "cancelled", error="Tool execution deadline expired", reason="deadline"
+                )
         for job in self.states():
             if len(self.running) >= self.limit:
                 break
             if job["status"] == "prepared" and not job.get("parent"):
+                self.store.sync()
+                if self.admit and not self.admit(job):
+                    self.state(job["id"], "cancelled", reason="Superseded by newer owner input")
+                    continue
                 await self.launch(job)
 
     async def cancel(self, job_id):
@@ -418,6 +454,10 @@ class Jobs:
         if self.server:
             self.server.close()
             await self.server.wait_closed()
+        connections = list(self.connections)
+        for task in connections:
+            task.cancel()
+        await asyncio.gather(*connections, return_exceptions=True)
         (self.store.control / "broker.json").unlink(missing_ok=True)
         if self.lock:
             self.lock.close()

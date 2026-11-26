@@ -83,6 +83,8 @@ class Agents:
 
     def read_roots(self, actor):
         roots = []
+        if self.get(actor)["role"] == "terra" and actor.agent.startswith("terra-"):
+            roots.append(self.path(actor.agent.removeprefix("terra-")))
         seen = set()
         while actor.branch and actor.branch not in seen:
             seen.add(actor.branch)
@@ -96,6 +98,13 @@ class Agents:
 
     def create(self, name, role, responsibility, *, principal=None):
         identifier(name)
+        if role == "sol" and (
+            name in ("astra", "user", "shared")
+            or name.startswith("terra-")
+            or len(name) > 100
+            or self.store.latest("branch.created", name)
+        ):
+            raise ValueError("Choose a non-reserved specialist name of at most 100 characters")
         old = self.store.latest("agent.created", name)
         if old:
             if (old["data"]["role"], old["data"]["responsibility"]) != (role, responsibility):
@@ -153,11 +162,18 @@ class Agents:
             else BASE_TOOLS + (["create_agent"] if actor == Actor("astra") else [])
         )
         origin = source / "tools" if source else resource_directory("bundled")
-        for name in allowed:
-            src = origin / (name + ".py")
-            dest = root / "tools" / src.name
-            if src.exists() and not dest.exists():
-                shutil.copyfile(src, dest)
+        if not self.store.by_key("tools-seeded:" + actor.scope):
+            for name in allowed:
+                src = origin / (name + ".py")
+                dest = root / "tools" / src.name
+                if src.exists() and not dest.exists():
+                    shutil.copyfile(src, dest)
+            self.store.event(
+                "tools.seeded",
+                actor.scope,
+                {"names": [p.stem for p in sorted((root / "tools").glob("*.py"))]},
+                key="tools-seeded:" + actor.scope,
+            )
         for name in ("L0.md", "L1.md"):
             path = root / "memory" / name
             if not path.exists():

@@ -1,5 +1,8 @@
 import asyncio
 
+HANDLES_MESSAGE = True
+NOTIFY_ON_SUCCESS = False
+
 
 async def run(tool, recipient: str, additional_content: dict | None = None):
     """Send your final-field message with sender-prepared context. additional_content may contain files (paths), results (existing job IDs), and tools ({name,args} invocations). Requested additions settle before atomic delivery. This does not wait for a recipient reply. If your current response has no final text, preparation is retained for your next addressed final response."""

@@ -35,13 +35,19 @@ async def run(tool, command: str, timeout: int = 60):
         "stderr_path": str(directory / "stderr.txt"),
     }
     if len(text) > 50_000:
-        result["evidence"] = await tool.invoke(
-            "extract",
-            {
-                "path": str(directory / "stdout.txt"),
-                "question": "Summarize this command output, retaining exact evidence for errors and the requested result.",
-            },
-        )
+        for name, raw in (("stdout", stdout), ("stderr", stderr)):
+            if len(raw.decode(errors="replace")) > 25_000:
+                result[name + "_evidence"] = await tool.invoke(
+                    "extract",
+                    {
+                        "path": str(directory / (name + ".txt")),
+                        "question": "Summarize this command "
+                        + name
+                        + ", retaining exact evidence for errors and the requested result.",
+                    },
+                )
+            else:
+                result[name] = raw.decode(errors="replace")
     else:
         result.update(
             stdout=stdout.decode(errors="replace"), stderr=stderr.decode(errors="replace")

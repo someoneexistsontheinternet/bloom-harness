@@ -141,6 +141,8 @@ class Messages:
             package = json.loads(path.read_bytes())
             if self.store.by_key("message-consumed:" + package["id"]):
                 continue
+            if self.store.by_key("message-filed:" + package["id"]):
+                continue
             if digest((path.parent / "message.txt").read_bytes()) != package["body"]["sha256"]:
                 raise ValueError("Inbox message differs from its original")
             result.append(package)
@@ -153,6 +155,15 @@ class Messages:
                 package["id"],
                 {"turn": turn},
                 key="message-consumed:" + package["id"],
+            )
+
+    def file(self, packages, reason):
+        for package in packages:
+            self.store.event(
+                "message.filed",
+                package["id"],
+                {"reason": reason},
+                key="message-filed:" + package["id"],
             )
 
     def recover(self):

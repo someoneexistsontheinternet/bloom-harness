@@ -67,9 +67,23 @@ def definition(path):
     if required_count < 0:
         raise ValueError("Tool() cannot have a model-supplied default")
     properties = {p.arg: annotation(p.annotation) for p in params}
+    options = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id in (
+                    "HANDLES_MESSAGE",
+                    "NOTIFY_ON_SUCCESS",
+                ):
+                    value = ast.literal_eval(node.value)
+                    if type(value) is not bool:
+                        raise ValueError("Tool execution options must be booleans")
+                    options[target.id] = value
     return {
         "name": path.stem,
         "sha256": digest(data),
+        "handles_message": options.get("HANDLES_MESSAGE", False),
+        "notify_on_success": options.get("NOTIFY_ON_SUCCESS", True),
         "schema": {
             "type": "function",
             "name": path.stem,

@@ -224,8 +224,17 @@ class Context:
         pressure = size >= 450_000
         if not (force or due or pressure):
             return False
-        through = max((r["seq"] for r in self.store.events()), default=0)
-        call_id = "compact_" + digest(encoded([actor.scope, snap["seq"], through]))[:24]
+        through = max(
+            (r["seq"] for r in self.store.events("history.appended", actor.scope)),
+            default=snap["data"]["through"],
+        )
+        resumed = self.store.latest("actor.resumed", actor.scope)
+        call_id = (
+            "compact_"
+            + digest(
+                encoded([actor.scope, snap["seq"], through, resumed["seq"] if resumed else 0])
+            )[:24]
+        )
         profile = snap["data"]["profile"]
         body = {
             "model": profile["model"],

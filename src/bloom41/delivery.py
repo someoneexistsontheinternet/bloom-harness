@@ -168,6 +168,7 @@ class Delivery:
             text,
             message_id=message_id,
             attachments=items,
+            kind=turn.get("message_kind", "message"),
             reply_to=turn.get("reply_to"),
             metadata={
                 "turn": turn["id"],

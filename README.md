@@ -1,47 +1,71 @@
 # Bloom v4.1 experimental
 
-A fresh CLI implementation on `cli-v4.1-experimental`, based on the public
-repository's main branch. The core routes filesystem messages, prepares context,
-calls models and runs asynchronous standalone Python tools.
+A fresh CLI implementation on `cli-v4.1-experimental`, from public main.
+Filesystem inbox → recipient Terra → persistent agent → filesystem outbound.
+The design and acceptance criteria are in [docs/design.md](docs/design.md).
 
-Development is incremental: commit each coherent feature after focused checks.
-The architecture and acceptance criteria are in [docs/design.md](docs/design.md).
-The durable foundation is implemented: immutable file events, rebuildable SQLite,
-agent/branch identities, exact text/attachment packages and idempotent delivery.
-The standalone tool runner is implemented: native definitions are discovered
-without importing tool code in the host, each execution has an authenticated
-capability, and macOS workers run under an explicit filesystem sandbox. File read,
-revision-checked edit, local find, bash and cancellation are available. Nested tool
-calls retain separate receipts. Eight tests cover recovery, real execution,
-cancellation and cross-agent/control-file denial. The CLI loop and model/search
-tools are still under development. The shared HTTP/SSE provider adapter and context
-layer now retain exact requests, native phases/images, stable history and fork
-seeds. Model admission is zero until an explicit allowance is granted. Twelve
-offline tests pass, including concurrent receipt reuse and uncertain-stream
-retention; live provider compatibility has not been rechecked for v4.1. No
-production service or live inference is started by installation or tests.
+The common loop, native provider adapter, durable messages and isolated tool
+runner are implemented. Persistent Astra/Sol identities share the same loop;
+Terra gathers context without taking over their work. Tools are ordinary Python
+files in each agent's `tools/` directory, with native definitions discovered from
+typed entry points. New messages and actual results wake agents; waiting and
+routine send acknowledgements spend no inference.
 
-The broker binds only loopback and derives identity from execution credentials,
-never tool arguments. Arbitrary tools are refused without the macOS sandbox unless
-the operator explicitly selects trusted-tools mode. This is tested filesystem/API
-isolation, not a claim of comprehensive containment against every OS exploit.
-
-Sender preparation now runs in `send_message.py`: selected file revisions,
-existing job results and new contextual tools settle before one atomic package is
-delivered. A tool-only response can prepare context for the next final-field
-message. `extract.py` reads numbered 128k-token passes and resolves selected
-passages against the original bytes, preserving CRLF and Unicode. Sixteen tests
-pass, including real sender preparation while an unrelated process continues.
-The common interactive loop and live Safari integration are the next steps.
-
-The Safari capture source is retained separately under `lib/bloom_safari` for
-adaptation. It is not yet connected to the new tool runner. Its native helper
-must have matching source and explicit macOS permissions before live capture.
+`send_message` takes the exact final-field text, freezes selected file revisions,
+waits on named existing jobs or new contextual tools, and publishes one complete
+package. Delivery does not end the agent's assignment. Only continuous Astra can
+create persistent Sols. Self-forks pin the exact parent request and retain the
+owner's identity, with separate history and writable files.
 
 ```sh
 uv sync --group dev
+.venv/bin/bloom41 --root logs/demo-first demo
 ```
 
-Files and receipts are authoritative; SQLite is only a disposable search index.
-Runtime workspaces, credentials, notes, logs and evidence are excluded from Git
-and distribution artifacts. The separate v3 and v4 runtimes are not migrated.
+The demo uses explicitly scripted models, real sandboxed shell/file execution and
+real message delivery. It checks the returned arithmetic evidence and verifies
+that idling buys no new decisions. Use a fresh root; scripted workspaces cannot
+subsequently be used for live inference.
+
+For real use, create a separate workspace and grant a deliberate call allowance:
+
+```sh
+.venv/bin/bloom41 --root workspace-runs/first init
+.venv/bin/bloom41 --root workspace-runs/first budget --calls 20
+.venv/bin/bloom41 --root workspace-runs/first post 'Your task here'
+.venv/bin/bloom41 --root workspace-runs/first run
+.venv/bin/bloom41 --root workspace-runs/first status
+```
+
+The default provider uses an existing Codex login; `--provider openai` uses
+`OPENAI_API_KEY`. Credentials never enter tool environments. Installation and
+initialization start no inference. The default allowance is zero and every
+owner/helper request counts. All profiles retain a configured 1M capacity; the
+local admission check counts text and reserves output space, not exact image cost.
+
+`chat` accepts input continuously; `/urgent`, `/status` and `/quit` are available.
+`run --watch` waits for new input. `inbox`, `usage`, `tools` and `reindex` inspect
+the durable workspace. After inspecting a failure, `resume ACTOR --reason TEXT`
+explicitly permits recovery: completed responses are reused, and failed purchases
+remain recorded rather than silently retried. Budget-blocked requests that have
+not started resume automatically after an allowance is added.
+
+Files, native requests/responses and event receipts are authoritative; SQLite is
+a rebuildable index. Prepared effects are checked again before execution when
+new user input arrives. Accepted but unsettled effects remain uncertain after
+restart. Runtime data, credentials, transcripts and private notes are excluded
+from Git and packages. V3/v4 workspaces are not migrated.
+
+On macOS, workers use an explicit filesystem sandbox plus actor-bound loopback
+API credentials. Cross-agent/control-file denial is tested with real subprocesses.
+Elsewhere, arbitrary scripts require explicit `--trusted-tools`; there is no
+claim of OS isolation in that mode. This is tested filesystem/API isolation,
+not comprehensive protection against every OS exploit.
+
+Current verification: 24 offline tests pass, including executable CLI exchange,
+exact fork seeds, cancellation, auth checks, sender preparation, superseding
+queued effects, crash recovery and explicit failed-request recovery. Live
+provider compatibility has not yet been rechecked for v4.1. The preserved Safari
+capture implementation under `lib/bloom_safari` is being connected next; live
+GUI capture and full memory/compaction checks remain unfinished. No production
+service or gateway deployment is included.
