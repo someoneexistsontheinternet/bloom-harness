@@ -394,3 +394,43 @@ async def test_shutdown_records_terminal_receipts_for_tool_model_consultations(t
     assert len(loop.store.events("model.failed")) == 1
     assert not loop.jobs.connections
     loop.store.close()
+
+
+def test_terra_does_not_merge_distinct_context_continuations_for_the_same_owner(tmp_path):
+    loop = Loop(tmp_path, Conversation())
+    terra = Actor("terra-astra")
+    continuation = {
+        "context_for": "astra",
+        "request_id": "context-real",
+        "original_ids": ["original"],
+        "origin": "original",
+    }
+    activity = {
+        "context_for": "astra",
+        "request_id": "activity-other",
+        "original_ids": [],
+        "origin": "original",
+    }
+    loop.messages.deliver(
+        "system",
+        terra.scope,
+        "Routine activity",
+        message_id="activity",
+        kind="activity",
+        metadata={"context_request": activity},
+    )
+    loop.messages.deliver(
+        "tool:send_message",
+        terra.scope,
+        "Prepared, now provide the final context note",
+        message_id="continuation",
+        kind="tool_result",
+        metadata={"context_request": continuation},
+    )
+    first = loop.ready(terra)
+    assert [p["id"] for p in first] == ["activity"]
+    loop.messages.consume(first, "activity-turn")
+    second = loop.ready(terra)
+    assert [p["id"] for p in second] == ["continuation"]
+    assert second[0]["metadata"]["context_request"]["request_id"] == "context-real"
+    loop.store.close()

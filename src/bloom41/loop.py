@@ -256,7 +256,7 @@ class Loop:
                     if package["kind"] == "context_request"
                     else meta.get("context_request", {})
                 ) or {}
-                return context.get("context_for")
+                return context.get("context_for"), context.get("request_id")
 
             selected = destination(pending[0])
             return [p for p in pending if destination(p) == selected]

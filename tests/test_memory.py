@@ -164,3 +164,28 @@ async def test_branch_compaction_keeps_owner_seed_and_does_not_publish_memory(tm
     with pytest.raises(PermissionError):
         loop.agents.create("intruder", "sol", "No authority", principal=branch)
     loop.store.close()
+
+
+async def test_empty_compaction_keeps_history_and_postpones_optional_retry(tmp_path):
+    provider = Scripted(reply(""))
+    loop = Loop(tmp_path, provider)
+    loop.models.grant(3)
+    actor = Actor("terra-astra")
+    loop.context.append(
+        actor, [{"role": "user", "content": "retained evidence " * 12_000}], key="large-source"
+    )
+    original = loop.context.history(actor)
+    snapshot = loop.context.snapshot(actor)
+    assert not await loop.context.compact(actor, loop.models)
+    assert loop.context.history(actor) == original
+    assert loop.context.snapshot(actor) == snapshot
+    assert loop.store.latest("context.compaction_rejected", actor.scope)
+    loop.context.append(
+        actor,
+        [{"role": "user", "content": "Use the original evidence for the next request."}],
+        key="new-input",
+    )
+    assert not await loop.context.compact(actor, loop.models)
+    assert len(provider.requests) == 1
+    assert "Use the original evidence" in loop.context.history(actor)[-1]["content"]
+    loop.store.close()

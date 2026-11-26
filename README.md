@@ -92,11 +92,16 @@ boundary. L2 remains a retrieval index instead of growing the permanent prefix.
 Working defaults are 20k tokens for Terra, 250k after three inputs for owners
 (450k pressure boundary), and 500k for temporary branches. These are compaction
 thresholds, not lower model capacities; all configured windows remain 1M.
+An empty or oversized optional compaction memo leaves the original history active
+and postpones another attempt for three input turns; it does not park the agent.
+Terra continuations retain their request identity even when unrelated activity
+arrives for the same owner.
 
-Current verification: 38 offline tests pass, including executable CLI exchange,
+Current verification: 43 offline tests pass, including executable CLI exchange,
 exact fork seeds, cancellation, auth checks, sender preparation, superseding
 queued effects, crash recovery and explicit failed-request recovery. Live
-provider compatibility has not yet been rechecked for v4.1. Retained real Safari
+provider transport and native tools have now been exercised in the first live
+market run; full workload verification is ongoing. Retained real Safari
 discussion/table/link captures pass replay with full text and native images
 preserved. The separate helper builds and its signature verifies. After its
 explicit Automation grant, live v4.1 Safari fixtures also passed: whole discussion,
