@@ -150,7 +150,11 @@ class Context:
                     "content": [
                         {
                             "type": "input_text",
-                            "text": "Previous context note (not a new request). Original: "
+                            "text": "Previous context note for "
+                            + str(note.get("recipient") or "the owner")
+                            + "; input "
+                            + str(note.get("origin") or note["episode"])
+                            + " (not a new request). Original: "
                             + note["history"]
                             + "\n"
                             + note["text"],
@@ -184,6 +188,9 @@ class Context:
     def note_data(self, turn, history):
         return {
             "episode": (turn.get("context_request") or {}).get("request_id") or turn["origin"],
+            "recipient": (turn.get("context_request") or {}).get("context_for")
+            or turn.get("reply_to"),
+            "origin": turn["origin"],
             "text": limit(self.store.read(turn["final"]).decode(), 512),
             "history": f"history/{history['seq']:012d}.json",
             "final": turn["final"],
@@ -400,15 +407,15 @@ class Context:
         size = count(encoded(visible(items)).decode())
         role = self.agents.get(actor)["role"]
         inputs = len(self.instruction_inputs(actor, after=snap["seq"]))
+        floor = snap["data"].get("working_tokens", 0)
         due = (
-            size > 500_000
+            size > 500_000 and (floor <= 500_000 or size >= floor + 32768)
             if actor.branch
-            else size > 20_000
+            else size > 20_000 and (floor <= 20_000 or size >= floor + 32768)
             if role == "terra"
             else size > 250_000 and inputs >= 3
         )
         pressure_at = 500_000 if actor.branch else 450_000
-        floor = snap["data"].get("working_tokens", 0)
         pressure = size >= pressure_at and (floor < pressure_at or size >= floor + 32768)
         rejected = self.store.latest("context.compaction_rejected", actor.scope)
         if (

@@ -344,3 +344,31 @@ async def test_branch_protects_only_instructions_in_its_exact_parent_seed(tmp_pa
     assert "Original parent direction" in history and "Exact branch direction" in history
     assert "Later parent-only correction" not in history
     loop.store.close()
+
+
+async def test_large_protected_branch_base_does_not_recompact_small_tool_updates(tmp_path):
+    loop = Loop(tmp_path, Scripted(reply("Retain the exact parent constraints.")))
+    loop.models.grant(2)
+    owner = Actor("astra")
+    receive(loop, owner, "user", "constraint " * 520_000, "large-owner-input")
+    request, tools = loop.context.request(owner, [])
+    branch = loop.agents.fork(
+        owner,
+        "large-branch",
+        {"request": loop.store.put(request), "turn": "large-owner-input", "tools": tools},
+        "Verify one claim",
+    )
+    assert await loop.context.compact(branch, loop.models, force=True)
+    assert loop.context.snapshot(branch)["data"]["working_tokens"] > 500_000
+    for n in range(3):
+        receive(
+            loop,
+            branch,
+            "tool:read_file",
+            "Small factual update",
+            f"branch-result-{n}",
+            kind="tool_result",
+        )
+        assert not await loop.context.compact(branch, loop.models)
+    assert len(loop.models.provider.requests) == 1
+    loop.store.close()
