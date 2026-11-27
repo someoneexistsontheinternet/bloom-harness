@@ -166,7 +166,9 @@ def fixture_trace(tmp_path, monkeypatch):
         "j-completed",
     )
     event(4.2, "job.notified", "j1", {"woke": True}, "job-notified:j1")
-    message(5, "answer", "astra", "user", metadata={"origin": "fixture-question"})
+    message(
+        5, "answer", "astra", "user", metadata={"origin": "fixture-question", "sender_job": "j1"}
+    )
     run = tmp_path / "run"
     run.mkdir()
     (run / "fixture-process.json").write_text(
@@ -240,3 +242,59 @@ def test_overlap_math_and_nested_private_projection():
     assert 'private"' not in json.dumps(projected)
     assert "credential" not in json.dumps(projected)
     assert projected["text"] == "visible"
+
+
+def test_lane_viewer_preserves_native_boundaries_and_lazy_visible_payloads(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
+    from build_profiler_site import build
+
+    workspace, run, reader = fixture_trace(tmp_path, monkeypatch)
+    trace = profiler.Trace(workspace, run).build()
+    original = hashlib.sha256((workspace / "index.sqlite3").read_bytes()).hexdigest()
+    output = tmp_path / "site"
+    data, report = build(trace, output)
+    assert report["model_requests"] == 2
+    assert report["receipts"] == len(trace.events)
+    assert hashlib.sha256((workspace / "index.sqlite3").read_bytes()).hexdigest() == original
+    events = {event["n"]: event for event in data["events"]}
+    spans = {span["id"]: span for span in data["spans"]}
+    queue = spans["queue:j1"]
+    assert queue["v"] - queue["u"] == 200_000
+    capture = spans["capture:s1"]
+    assert capture["a"] == capture["b"]
+    assert capture["v"] - capture["u"] == 300_000
+    call = spans["model:" + reader]
+    assert events[call["a"]]["l"] == "luna"
+    assert events[call["b"]]["error"]
+    assert all(a in events and b in events and a != b for a, b, _ in data["edges"])
+    assert [
+        spans["job:j1"]["a"],
+        trace.keys["message-delivered:answer"]["seq"],
+        "delivered message",
+    ] in data["edges"]
+    assert not any(span["id"].startswith("display:") for span in data["spans"])
+    assert all(
+        span["k"] == "task" for span in data["spans"] if span["category"] in ("Turn", "Runner")
+    )
+    for event in events.values():
+        record = json.loads((output / event["record"]).read_text())[str(event["n"])]
+        if event.get("derived"):
+            assert record["record_type"] == "derived timer boundary"
+        else:
+            assert record["seq"] == event["n"]
+        for _, file in event["details"]:
+            assert (output / file).is_file()
+    text = "".join(file.read_text() for file in (output / "v41-details").glob("*.json"))
+    assert "private fixture" not in text and "fixture-key" not in text
+    assert "Visible answer" in text
+    assert "alert(1)" not in (output / "v41.html").read_text()
+    with pytest.raises(ValueError, match="outside the original"):
+        build(trace, workspace / "viewer")
+
+
+def test_viewer_epoch_round_trip_is_exact_at_microsecond_boundaries(monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
+    from build_profiler_site import iso
+
+    for value in (1795666525723571, 1795672612934696, 1795672703476259):
+        assert profiler.micros(iso(value)) == value

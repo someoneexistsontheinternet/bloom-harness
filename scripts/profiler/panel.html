@@ -1,0 +1,53 @@
+<div id="profiler" class="pf" hidden>
+  <a class="pf-skip" href="#pf-workspace">Skip to trace</a>
+  <header class="pf-top"><div class="pf-top-in">
+    <div class="pf-brand"><img src="./bloom.svg" alt="" width="31" height="31"><span>Bloom</span><span class="pf-brand-rule"></span><span class="pf-brand-sub">v4.1 trace</span></div>
+    <nav aria-label="Site navigation"><a href="?run=frmi&amp;thread=profiler">Earlier v4 viewer</a><form method="post" action="./lock"><button type="submit" aria-label="Lock viewer">Lock</button></form></nav>
+  </div></header>
+  <main id="pf-workspace" class="pf-main">
+    <div class="pf-heading"><div><div class="pf-date" id="pf-date">Recorded run</div><h1>Execution trace</h1></div>
+      <nav class="pf-switch" aria-label="Recorded run"><button type="button" data-run="frmi">FRMI</button><button type="button" data-run="avgo">AVGO</button><button type="button" data-run="full">Full run</button></nav>
+    </div>
+    <div class="pf-runline"><p id="pf-brief"></p><div id="pf-stats" class="pf-stats"></div></div>
+    <div class="pf-grid">
+      <div class="pf-left">
+        <section class="pf-panel pf-chart" aria-label="Operation timeline and dependencies">
+          <div class="pf-chart-top"><div class="pf-tabs" aria-label="Graph view"><button type="button" data-view="timeline">Timeline</button><button type="button" data-view="graph">Dependencies</button></div>
+            <div class="pf-zoom" id="pf-zoom"><button id="pf-out" type="button" title="Zoom out (−)" aria-label="Zoom out">−</button><button id="pf-in" type="button" title="Zoom in (+)" aria-label="Zoom in">+</button><button id="pf-fit" type="button" title="Fit the full run (0)">Fit</button><button id="pf-focus" type="button" title="Zoom to the selected operation (F)">Focus</button></div>
+          </div>
+          <div id="pf-time-view">
+            <div class="pf-nav-head"><span>Run overview</span><span id="pf-range" class="pf-mono"></span></div>
+            <canvas id="pf-overview" aria-label="Full run overview. Drag a range to zoom or click to center."></canvas>
+            <div id="pf-scroll-chart" class="pf-scroll-chart"><canvas id="pf-timeline" tabindex="0" aria-label="Trace lanes. Use left and right arrow keys to step through operations, plus and minus to zoom."></canvas></div>
+            <div id="pf-tooltip" class="pf-tooltip" hidden></div>
+            <div class="pf-chart-foot"><div class="pf-mark-key"><span><i class="pf-key-span"></i>Duration</span><span><i class="pf-key-wait"></i>Wait</span><span><i class="pf-key-point"></i>Event</span></div><div class="pf-chart-options"><label><input id="pf-arrows" type="checkbox" checked> Links</label><label><input id="pf-lifetimes" type="checkbox"> Turn envelopes</label><button id="pf-clock" type="button" title="Switch between elapsed time and UTC">Elapsed time</button></div></div>
+          </div>
+          <div id="pf-graph-view" hidden>
+            <div class="pf-graph-cap"><strong>Recorded dependencies</strong><span>Select a node to follow it.</span></div>
+            <div class="pf-depmap" id="pf-depmap"></div>
+          </div>
+        </section>
+        <div class="pf-jumpbar">
+          <div class="pf-milestone"><label for="pf-milestone">Landmarks</label><select id="pf-milestone"><option value="">Go to a recorded moment</option></select></div>
+          <form class="pf-timejump" id="pf-jump-form"><label for="pf-jump">Jump to</label><input id="pf-jump" autocomplete="off" spellcheck="false" placeholder="m:ss, UTC, or #event"><button type="submit">Go</button></form>
+        </div>
+        <p id="pf-notice" class="pf-notice" role="status" hidden></p>
+        <section class="pf-panel pf-log" aria-label="Chronological event ledger">
+          <div class="pf-log-top"><h2>Event log</h2><span class="pf-count" id="pf-count"></span></div>
+          <div class="pf-filters"><label class="pf-search"><span class="pf-search-icon" aria-hidden="true"></span><input id="pf-search" aria-label="Search events" type="search" placeholder="Search event, tool, source, or task"></label><select id="pf-lane" aria-label="Filter by lane"></select><select id="pf-kind" aria-label="Filter by event family"></select></div>
+          <div class="pf-log-sub"><label><input id="pf-window" type="checkbox"> Visible range only</label><button type="button" id="pf-clear" hidden>Clear filters</button></div>
+          <div class="pf-tablewrap"><table class="pf-table"><thead><tr><th scope="col">Time</th><th scope="col">Operation</th><th scope="col">Lane</th><th scope="col">Event</th></tr></thead><tbody id="pf-rows"></tbody></table></div>
+          <div class="pf-pages"><span id="pf-paging"></span><div><button type="button" id="pf-prevpage">Previous</button><button type="button" id="pf-nextpage">Next</button></div></div>
+        </section>
+      </div>
+      <aside class="pf-panel pf-inspector" id="pf-inspector" aria-label="Selected operation">
+        <div class="pf-ins-top"><h2>Inspector</h2><div class="pf-step"><button type="button" id="pf-prev" title="Previous event (left arrow)" aria-label="Previous event">‹</button><button type="button" id="pf-next" title="Next event (right arrow)" aria-label="Next event">›</button></div></div>
+        <div class="pf-ins-title"><div id="pf-identity"></div><h3 id="pf-selected"></h3><div class="pf-kind" id="pf-event-kind"></div></div>
+        <div class="pf-ins-tabs" aria-label="Inspector section"><button type="button" data-ins="overview">Overview</button><button type="button" data-ins="data">Recorded data</button><button type="button" data-ins="turn">Model turn</button></div>
+        <div id="pf-ins-content" class="pf-ins-content" aria-live="polite"></div>
+        <div class="pf-ins-bottom"><button type="button" id="pf-copy">Copy event link</button><button type="button" id="pf-isolate">Filter to task</button></div>
+      </aside>
+    </div>
+    <footer class="pf-footer"><span>Bloom v4.1 · Recorded elapsed time; spans overlap</span><span><a href="./v41-chrome-trace.json" download>Chrome trace</a> · Scroll to zoom · Drag to pan</span></footer>
+  </main>
+</div>

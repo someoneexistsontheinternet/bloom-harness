@@ -22,7 +22,7 @@ packages = ["src/bloom41", "lib/bloom_safari"]
 "profiles" = "bloom41/profiles"
 
 [tool.hatch.build.targets.sdist]
-only-include = ["src", "lib", "tools/bundled", "profiles", "tests", "scripts/check.py", "scripts/check_web.py", "scripts/profile_run.py", "scripts/profiler_view.html", "docs", ".github", "README.md", "AGENTS.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "pyproject.toml", "uv.lock", ".gitignore", ".python-version"]
+only-include = ["src", "lib", "tools/bundled", "profiles", "tests", "scripts/check.py", "scripts/check_web.py", "scripts/profile_run.py", "scripts/profiler_view.html", "scripts/build_profiler_site.py", "scripts/profiler", "docs", ".github", "README.md", "AGENTS.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "pyproject.toml", "uv.lock", ".gitignore", ".python-version"]
 
 [dependency-groups]
 dev = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2", "ruff==0.17.2"]

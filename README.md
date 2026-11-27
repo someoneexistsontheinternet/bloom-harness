@@ -97,7 +97,7 @@ and postpones another attempt for three input turns; it does not park the agent.
 Terra continuations retain their request identity even when unrelated activity
 arrives for the same owner.
 
-Current verification: 51 offline tests pass, including executable CLI exchange,
+Current verification: 53 offline tests pass, including executable CLI exchange,
 exact fork seeds, cancellation, auth checks, sender preparation, superseding
 queued effects, crash recovery and explicit failed-request recovery. Live
 provider transport, native tools and sequential conversation reuse have now been
@@ -151,6 +151,24 @@ receipts distinguish runner downtime when available; their absence does not impl
 an operator pause. Actor rows in the viewer are collapsible display groups and
 include idle gaps. The complete Chrome trace remains available independently of
 the inline view; the latter loads a pinned visualization component from its CDN.
+
+For the full browser viewer, use the lane-based timeline, event ledger and side
+inspector adapted from the earlier Bloom explorer:
+
+```sh
+.venv/bin/python scripts/build_profiler_site.py \
+  --workspace logs/TASK/RUN/workspace \
+  --run-directory logs/TASK/RUN \
+  --out artifacts/profiler-site/NEW_RUN
+```
+
+Serve that directory through an appropriate authenticated static origin and open
+`v41.html`. Model and tool payloads load on selection. The complete receipt list,
+explicit dependency links, exact model inputs/outputs and time/event bookmarks
+remain available. FRMI/AVGO views end at their answers; Full run includes later
+activity. Turn and service envelopes are optional, so idle time is not presented
+as a solid agent-activity bar. Derived supervisor boundaries are labeled separately
+from original journal receipts. Generated data remains private and outside Git.
 
 Run `.venv/bin/python scripts/check.py` for the offline checks. CI runs them on
 macOS (real sandbox) and Linux (explicit trusted-tools fixtures), then builds the
