@@ -266,7 +266,19 @@ class Loop:
             if p["kind"] == "context" and p["metadata"].get("context_for") == actor.scope
         ]
         if not contexts:
-            return []
+            # A result already belongs to this owner's current work. New messages
+            # still need their context, so never run past an unread instruction.
+            if any(p["kind"] != "tool_result" for p in pending):
+                return []
+            # Honor context preparation accepted by an older runner. Its result
+            # must settle normally instead of consuming its originals twice.
+            covered = {
+                ident
+                for row in self.store.events("context.requested", actor.scope)
+                if not self.store.by_key("context-finished:" + row["data"]["request_id"])
+                for ident in row["data"]["original_ids"]
+            }
+            return [p for p in pending if p["id"] not in covered]
         chosen = contexts[0]
         originals = [
             self.package(i)
@@ -293,7 +305,8 @@ class Loop:
         extras = [
             p
             for p in pending
-            if p["id"] not in {o["id"] for o in originals} and p["kind"] == "message"
+            if p["id"] not in {o["id"] for o in originals}
+            and p["kind"] in ("message", "tool_result")
         ]
         return [*originals, *extras, chosen]
 
@@ -306,6 +319,9 @@ class Loop:
                 p["kind"] == "context" and p["metadata"].get("context_for") == actor.scope
                 for p in pending
             ):
+                continue
+            pending = [p for p in pending if p["kind"] != "tool_result"]
+            if not pending:
                 continue
             outstanding = [
                 r

@@ -12,6 +12,11 @@ files in each agent's `tools/` directory, with native definitions discovered fro
 typed entry points. New messages and actual results wake agents; waiting and
 routine send acknowledgements spend no inference.
 
+Completed tool results return directly to the waiting owner. They do not commission
+another Terra pass. A new message still receives recipient-side context, and an
+unread instruction takes precedence over handling an older tool result. Results
+that arrive during context preparation can join the same owner turn.
+
 `send_message` takes the exact final-field text, freezes selected file revisions,
 waits on named existing jobs or new contextual tools, and publishes one complete
 package. Delivery does not end the agent's assignment. Only continuous Astra can

@@ -22,6 +22,8 @@ latest user corrections over inherited v3/v4 assumptions.
   atomic delivery. Delivery is independent of assignment completion.
 - Wait locally. Wake only for material input/results or explicitly continuing
   independent work. Do not buy model calls to poll jobs or announce receipts.
+- Return terminal tool results directly to their owner; do not buy a Terra pass
+  for each result. New instructions must not be skipped while processing results.
 - Keep native histories and 1M configured capacity. Persistent owners approve
   their private memory/compaction; Astra approves shared memory. Original history
   remains available through retrieval and forks.

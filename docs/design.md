@@ -20,6 +20,11 @@ agent, wait for the recipient's answer, or impose report-quality acceptance gate
 
 The scheduler launches independent tools concurrently, records one native result
 per call and parks without inference. Later results/messages can wake an agent.
+Terminal tool results return directly to their owner without purchasing another
+Terra context pass. New messages still go through recipient context preparation;
+an unread instruction cannot be skipped to process an older tool result. Results
+can join an already prepared message in one turn. Context preparation accepted
+by an older runner retains its original inputs and completes normally on recovery.
 An accepted long job is a receipt, not a reason to buy another decision. Native
 message phases, source lineage and tool-call correlation are preserved.
 
@@ -52,7 +57,8 @@ and sender preparation are tool workflows, not hardcoded scheduler purposes.
    output. Unknown effects surface as uncertain rather than being retried.
 3. Sender-owned additional context: files, existing completed/running results and
    new tool calls; idempotent whole-package publication and failure reporting.
-4. Shared persistent loop, Terra context selection, Astra/Sol exchange, same-owner
+4. Shared persistent loop, Terra context selection for new messages, direct terminal
+   tool-result delivery, Astra/Sol exchange, same-owner
    forks, final-field messages and zero model purchases during unchanged waits.
 5. Provider adapter, exact multimodal requests, bounded admission and honest usage;
    scripted acceptance is distinguished from authorized real-model verification.
