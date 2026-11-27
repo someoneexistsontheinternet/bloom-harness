@@ -225,7 +225,7 @@ async def test_compaction_counts_real_directions_and_does_not_pin_tool_or_peer_p
     astra = Actor("astra")
     loop.agents.create("worker", "sol", "Investigate", principal=astra)
     loop.context.snapshot(astra)
-    evidence = "large evidence row " * 40_000
+    evidence = "large evidence row " * 45_000
     ref = loop.store.put(evidence, "text/plain")
     receive(
         loop,
