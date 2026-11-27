@@ -50,6 +50,13 @@ owned revisions; L3 retains exact operations. Each owner approves private memory
 and compaction, while Astra approves shared memory. A temporary fork pins its
 origin, memory/tool versions and subsequent independent history.
 
+Compaction protects actual owner directions and material assignments, with
+references to their attachments. Native user-role wrapping alone does not make a
+tool result or peer report an instruction. Owner rebuilds count substantive
+inputs, and temporary branches preserve the parent cutoff. Nonproductive optional
+compaction is deferred; a paid completed memo is reused across interrupted
+adoption and operator recovery. The full old context remains an immutable source.
+
 Bundled tools: read_file, edit_file, bash, find, search, extract, fork_self,
 send_message, create_agent (Astra only), cancel_job. Safari search preserves the
 v3 native helper, ordinary signed-in task-owned window, full parsed document and

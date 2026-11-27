@@ -99,14 +99,21 @@ and an opt-in live local HTML regression.
 
 Owners publish private L0/L1/L2 memory through exact native edits; only continuous
 Astra publishes shared memory. Helpers and self-forks cannot approve those writes.
-Compaction is performed by the same owning model, preserves the literal recent
-inputs and immutable native original, and refreshes accepted memory only at that
+Compaction is performed by the same owning model, preserves exact owner
+instructions and immutable native originals, and refreshes accepted memory only at that
 boundary. L2 remains a retrieval index instead of growing the permanent prefix.
-Working defaults are 20k tokens for Terra, 250k after three inputs for owners
+Tool results and peer reports do not count as new owner directions or become
+protected bulk inputs. Instruction attachments retain their exact source references.
+Branches preserve only directions within their pinned parent seed and subsequent
+branch instructions. Working defaults are 20k retained tokens for Terra, 250k
+after three substantive inputs for owners
 (450k pressure boundary), and 500k for temporary branches. These are compaction
 thresholds, not lower model capacities; all configured windows remain 1M.
-An empty or oversized optional compaction memo leaves the original history active
-and postpones another attempt for three input turns; it does not park the agent.
+An empty, oversized or non-shrinking optional compaction leaves the original view
+active. It is deferred until three new owner inputs or substantial additional
+pressure (32k more tokens); unchanged protected material does not trigger a loop.
+An interrupted snapshot adoption reuses its completed compaction receipt even
+after operator resume. Force requests remain explicit deliberate boundaries.
 Terra continuations retain their request identity even when unrelated activity
 arrives for the same owner.
 

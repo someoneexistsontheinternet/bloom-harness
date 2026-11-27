@@ -219,6 +219,43 @@ class Context:
         atomic(self.agents.path(actor) / "history" / f"{row['seq']:012d}.json", encoded(items))
         return row
 
+    def instruction_inputs(self, actor, *, after=0, through=None):
+        """Actual owner directions, not every tool/peer message wrapped as user input."""
+        allowed = {"user"}
+        if self.agents.get(actor)["role"] == "sol":
+            allowed.add("astra")
+        if actor.branch:
+            allowed.add(self.store.latest("branch.created", actor.branch)["data"]["parent_scope"])
+        chosen = {}
+        for row in self.store.events("turn.received", actor.scope, after=after):
+            if through is not None and row["seq"] > through:
+                continue
+            for ident in row["data"]["inputs"]:
+                record = self.store.by_key("message-prepare:" + ident)
+                if (
+                    record
+                    and record["data"]["kind"] == "message"
+                    and record["data"]["sender"] in allowed
+                ):
+                    chosen.setdefault(ident, record["data"])
+        return list(chosen.values())
+
+    def protected_instructions(self, actor, through):
+        selected = {}
+        if actor.branch:
+            branch = self.store.latest("branch.created", actor.branch)
+            data = branch["data"]
+            parent = Actor(
+                actor.agent, data["parent_scope"] if data["parent_scope"] != actor.agent else None
+            )
+            origin = self.store.by_key("turn-received:" + data["seed"].get("turn", ""))
+            cutoff = origin["seq"] if origin else branch["seq"] - 1
+            for package in self.protected_instructions(parent, cutoff):
+                selected[package["id"]] = package
+        for package in self.instruction_inputs(actor, through=through):
+            selected[package["id"]] = package
+        return list(selected.values())
+
     def content(self, package):
         parts = [
             {
@@ -362,7 +399,7 @@ class Context:
         items = self.working_history(actor)
         size = count(encoded(visible(items)).decode())
         role = self.agents.get(actor)["role"]
-        inputs = len(self.store.events("turn.received", actor.scope, after=snap["seq"]))
+        inputs = len(self.instruction_inputs(actor, after=snap["seq"]))
         due = (
             size > 500_000
             if actor.branch
@@ -370,13 +407,15 @@ class Context:
             if role == "terra"
             else size > 250_000 and inputs >= 3
         )
-        pressure = size >= (500_000 if actor.branch else 450_000)
+        pressure_at = 500_000 if actor.branch else 450_000
+        floor = snap["data"].get("working_tokens", 0)
+        pressure = size >= pressure_at and (floor < pressure_at or size >= floor + 32768)
         rejected = self.store.latest("context.compaction_rejected", actor.scope)
         if (
             rejected
             and not force
-            and not pressure
-            and len(self.store.events("turn.received", actor.scope, after=rejected["seq"])) < 3
+            and len(self.instruction_inputs(actor, after=rejected["seq"])) < 3
+            and (not pressure or size < rejected["data"].get("input_tokens", size) + 32768)
         ):
             return False
         if not (force or due or pressure):
@@ -403,23 +442,61 @@ class Context:
             "reasoning": {"effort": profile["effort"]},
             "include": ["reasoning.encrypted_content"],
         }
+        # A completed purchase survives an interruption before snapshot adoption,
+        # including an explicit operator resume or a new projection policy.
+        for stamp in [0, *(r["seq"] for r in self.store.events("actor.resumed", actor.scope))]:
+            previous = "compact_" + digest(encoded([actor.scope, snap["seq"], through, stamp]))[:24]
+            if self.store.by_key("model-completed:" + previous):
+                call_id = previous
+                break
+        purchased = self.store.by_key("model-started:" + call_id)
+        if purchased:
+            body = self.store.json(purchased["data"]["request"])
+            items = body["input"]
+            size = count(encoded(visible(items)).decode())
+        self.store.event(
+            "context.compaction_plan",
+            actor.scope,
+            {
+                "snapshot": snap["key"],
+                "through": through,
+                "request": self.store.put(body),
+                "call": call_id,
+            },
+            key="compaction-plan:" + call_id,
+        )
         response = await models.call(actor, body, call_id=call_id, purpose="compact", profile=role)
         memo = final_text(response)
-        if not memo or count(memo) > (10_000 if role == "terra" else 100_000):
+
+        def reject(reason):
             self.store.event(
                 "context.compaction_rejected",
                 actor.scope,
                 {
                     "call": call_id,
                     "through": through,
-                    "reason": "empty final memo" if not memo else "memo exceeds working target",
+                    "reason": reason,
+                    "input_tokens": size,
                     "original_retained": True,
                 },
                 key="compaction-rejected:" + call_id,
             )
             return False
-        # Preserve the literal most recent inbound and owner instructions, not just a paraphrase.
-        protected = [i for i in items if i.get("role") == "user"][-3:]
+
+        if not memo or count(memo) > (10_000 if role == "terra" else 100_000):
+            return reject("empty final memo" if not memo else "memo exceeds working target")
+        # Input bodies carry exact instructions. Attachments retain their paths
+        # and immutable originals instead of pinning bulk evidence in every memo.
+        protected = (
+            [
+                self.content(
+                    {**p, "attachments": [{**a, "expose": "reference"} for a in p["attachments"]]}
+                )
+                for p in self.protected_instructions(actor, through)
+            ]
+            if role != "terra"
+            else []
+        )
         initial = self.store.json(snap["data"]["prefix"])
         identity = initial[0] if actor.branch else self.identity_prefix(actor)
         branch_instruction = (
@@ -439,6 +516,9 @@ class Context:
             {"role": "user", "content": "Owner-approved working memo:\n" + memo},
             *protected,
         ]
+        working_tokens = count(encoded(visible(prefix)).decode())
+        if not force and working_tokens >= size:
+            return reject("working context did not shrink")
         self.store.event(
             "context.snapshot",
             actor.scope,
@@ -448,6 +528,7 @@ class Context:
                 "through": through,
                 "approval": "model-completed:" + call_id,
                 "original": self.store.put(items),
+                "working_tokens": working_tokens,
             },
             key="compaction:" + call_id,
         )
