@@ -92,6 +92,7 @@ def definition(path):
                 if isinstance(target, ast.Name) and target.id in (
                     "HANDLES_MESSAGE",
                     "NOTIFY_ON_SUCCESS",
+                    "INTERACTIVE",
                 ):
                     value = ast.literal_eval(node.value)
                     if type(value) is not bool:
@@ -102,6 +103,7 @@ def definition(path):
         "sha256": digest(data),
         "handles_message": options.get("HANDLES_MESSAGE", False),
         "notify_on_success": options.get("NOTIFY_ON_SUCCESS", True),
+        "interactive": options.get("INTERACTIVE", False),
         "schema": {
             "type": "function",
             "name": path.stem,

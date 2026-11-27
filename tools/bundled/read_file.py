@@ -1,5 +1,7 @@
 import hashlib
 
+INTERACTIVE = True
+
 
 async def run(tool, path: str, start: int = 1, end: int | None = None):
     """Read an exact file range, list a directory, or expose an image as native image input. Paths are relative to your work directory; use memory/, tools/, inbox/ or history/ explicitly."""

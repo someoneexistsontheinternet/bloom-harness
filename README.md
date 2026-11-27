@@ -118,6 +118,14 @@ is durable and reused while extraction is pending; repeated scheduler ticks do n
 rebuild the same result or change its frozen supporting-file revisions. Missing or
 edited derived result snapshots are restored from their immutable originals.
 
+Tool source can declare `INTERACTIVE = True` for short control or file operations.
+The scheduler reserves one of its four worker slots for these jobs and admits them
+first, preserving FIFO order within each class. Bundled message, read/edit, cancel,
+fork and agent-creation tools use this declaration; search, extraction and shell
+work share the other three slots. This is scheduling metadata, not API authority
+or a latency guarantee: message preparation can still await selected evidence.
+Existing frozen tool versions retain their original declarations.
+
 Run `.venv/bin/python scripts/check.py` for the offline checks. CI runs them on
 macOS (real sandbox) and Linux (explicit trusted-tools fixtures), then builds the
 distribution. Neither CI nor the demo needs live provider credentials or browser

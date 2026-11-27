@@ -1,4 +1,5 @@
 HANDLES_MESSAGE = True
+INTERACTIVE = True
 
 
 async def run(tool, name: str, responsibility: str, additional_content: dict | None = None):

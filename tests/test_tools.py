@@ -46,6 +46,50 @@ def test_redaction_snapshots_jobs_once_per_value_and_refreshes_between_values(
     store.close()
 
 
+async def test_long_tools_leave_room_for_interactive_file_delivery(tmp_path):
+    store = Store(tmp_path)
+    agents = Agents(store)
+    agents.bootstrap()
+    (agents.path("astra") / "tools/slow.py").write_text('''async def run(tool):
+    """A deterministic stand-in for a tool waiting on remote work."""
+    return await tool.request("hold")
+''')
+    release = asyncio.Event()
+    arrived = set()
+
+    async def hold(actor, job, args):
+        arrived.add(job["id"])
+        await release.wait()
+        return "settled"
+
+    jobs = Jobs(store, {"hold": hold}, trusted_tools=sys.platform != "darwin", limit=4)
+    await jobs.start()
+    try:
+        slow = [jobs.submit(Actor("astra"), "slow", {}) for _ in range(4)]
+        for _ in range(100):
+            await jobs.pump()
+            if len(arrived) >= 3:
+                break
+            await asyncio.sleep(0.02)
+        assert len(arrived) >= 3
+        quick = jobs.submit(Actor("astra"), "read_file", {"path": "memory/L0.md"})
+        for _ in range(100):
+            await jobs.pump()
+            assert len(jobs.running) <= 4
+            if jobs.get(quick["id"])["status"] in TERMINAL:
+                break
+            await asyncio.sleep(0.02)
+        assert jobs.get(quick["id"])["status"] == "completed"
+        assert len(arrived) == 3
+        assert jobs.get(slow[-1]["id"])["status"] == "prepared"
+        release.set()
+        assert (await settled(jobs, slow[-1]["id"]))["status"] == "completed"
+    finally:
+        release.set()
+        await jobs.close()
+        store.close()
+
+
 async def test_real_tool_files_and_bash_and_idempotent_start(tmp_path):
     store = Store(tmp_path)
     agents = Agents(store)

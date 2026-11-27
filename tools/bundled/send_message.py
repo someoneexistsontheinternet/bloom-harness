@@ -2,6 +2,7 @@ import asyncio
 
 HANDLES_MESSAGE = True
 NOTIFY_ON_SUCCESS = False
+INTERACTIVE = True
 
 
 async def run(tool, recipient: str, additional_content: dict | None = None):

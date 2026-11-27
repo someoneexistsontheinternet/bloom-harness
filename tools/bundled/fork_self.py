@@ -1,4 +1,5 @@
 NOTIFY_ON_SUCCESS = False
+INTERACTIVE = True
 
 
 async def run(tool, question: str):

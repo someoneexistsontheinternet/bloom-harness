@@ -130,6 +130,7 @@ class Jobs:
             "arguments": arguments,
             "source": source,
             "schema": meta["schema"],
+            "interactive": meta.get("interactive", False),
             "status": "prepared",
             "turn": turn,
             "wake": wake,
@@ -442,20 +443,30 @@ class Jobs:
                 self.state(
                     ident, "cancelled", error="Tool execution deadline expired", reason="deadline"
                 )
-        for job in self.states():
-            occupied = sum(not self.get(ident).get("waiting_on") for ident in self.running)
+        # Keep one of the existing slots available for short interactive tools.
+        # The declaration comes from frozen tool source, not model arguments, and
+        # changes scheduling only: it grants no additional API authority.
+        for job in sorted(self.states(), key=lambda j: not j.get("interactive", False)):
+            if job["status"] != "prepared" or job.get("parent"):
+                continue
+            executing = [self.get(ident) for ident in self.running]
+            occupied = sum(not j.get("waiting_on") for j in executing)
             if occupied >= self.limit:
                 break
-            if job["status"] == "prepared" and not job.get("parent"):
-                self.store.sync()
-                if self.admit:
-                    allowed = self.admit(job)
-                    if allowed is False:
-                        self.state(job["id"], "cancelled", reason="Superseded by newer owner input")
-                        continue
-                    if allowed is None:
-                        continue
-                await self.launch(job)
+            background = sum(
+                not j.get("waiting_on") and not j.get("interactive", False) for j in executing
+            )
+            if not job.get("interactive", False) and background >= max(1, self.limit - 1):
+                continue
+            self.store.sync()
+            if self.admit:
+                allowed = self.admit(job)
+                if allowed is False:
+                    self.state(job["id"], "cancelled", reason="Superseded by newer owner input")
+                    continue
+                if allowed is None:
+                    continue
+            await self.launch(job)
 
     async def cancel(self, job_id):
         job = self.get(job_id)

@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 import uuid
 
+INTERACTIVE = True
+
 
 async def run(tool, path: str, text: str, expected_sha256: str | None = None):
     """Create a text file or replace its exact observed revision. Supply the SHA-256 from read_file when replacing. Memory changes require the owning model's explicit edit arguments."""
