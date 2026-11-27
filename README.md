@@ -126,16 +126,19 @@ after operator resume. Force requests remain explicit deliberate boundaries.
 Terra continuations retain their request identity even when unrelated activity
 arrives for the same owner.
 
-Current verification: 53 offline tests pass, including executable CLI exchange,
+Current verification: 73 offline tests pass, including executable CLI exchange,
 exact fork seeds, cancellation, auth checks, sender preparation, superseding
 queued effects, crash recovery and explicit failed-request recovery. Live
-provider transport, native tools and sequential conversation reuse have now been
-verified live, with both requested answers delivered from the same workspace. Retained real Safari
+provider transport, native tools and sequential conversation reuse were verified
+on an earlier revision, with both requested answers delivered from the same workspace. Retained real Safari
 discussion/table/link captures pass replay with full text and native images
 preserved. The separate helper builds and its signature verifies. After its
 explicit Automation grant, live v4.1 Safari fixtures also passed: whole discussion,
 tables, useful links and native screenshots. No production service or gateway
 deployment is included.
+The subsequent Terra working-view, result-delivery, compaction, admission and
+sender-preparation changes have offline and retained-history verification; no
+new live market run has measured their end-to-end latency.
 
 A user-inbox answer does not terminate other agents' outstanding work. `run` may
 therefore reach its allowance and exit with status 2 after delivering an answer;
