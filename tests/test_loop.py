@@ -276,12 +276,16 @@ async def test_restart_reuses_completed_owner_response_before_dispatch(tmp_path,
     with pytest.raises(Crash):
         await loop.run(seconds=8)
     assert not [a for a in loop.agents.all() if a["role"] == "sol"]
+    (acknowledged,) = [r for r in provider.requests if r["model"].endswith("astra")]
     loop.store.close()
     reopened = Loop(tmp_path, provider, heartbeat=0.01, trusted_tools=sys.platform != "darwin")
     result = await reopened.run(seconds=8)
     assert not [t for t in result["turns"] if t["status"] == "blocked"], result
     assert len(reopened.messages.pending("user")) == 1
-    assert len([r for r in provider.requests if r["model"].endswith("astra")]) == 2
+    # Recovery may deliver new terminal tool input. Its later decisions are not
+    # a replay: the exact response acknowledged before dispatch must be bought
+    # only once, regardless of asynchronous result ordering after the restart.
+    assert sum(r == acknowledged for r in provider.requests) == 1
     reopened.store.close()
 
 
