@@ -234,7 +234,7 @@ def build(trace, out):
             else "memory"
             if category in ("Context preparation", "Result delivery")
             else "runtime"
-            if category in ("Operator pause", "Runner")
+            if category in ("Operator pause", "Operator recovery", "Runner")
             else actor_lane(actor)
         )
         boundaries = []

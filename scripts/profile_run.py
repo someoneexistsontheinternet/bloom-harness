@@ -599,6 +599,33 @@ class Trace:
                 b,
                 attributes={"measurement": "Supervisor launch/exit timestamps"},
             )
+        for recovery in self.kinds["operator.recovery"]:
+            start = recovery["data"].get("delay_started_at")
+            resolutions = [
+                event
+                for event in self.kinds["context.finished"]
+                if event["data"].get("operator_resolution") == recovery["key"]
+            ]
+            if not start or not resolutions:
+                continue
+            if len(resolutions) != 1:
+                raise ValueError("Ambiguous operator recovery resolution: " + recovery["key"])
+            end = resolutions[0]
+            self.add(
+                "recovery:" + recovery["key"],
+                "Operator recovery",
+                "Operator recovery",
+                "operator",
+                micros(start),
+                end["us"],
+                finish=end["seq"],
+                status="warning",
+                attributes={
+                    "recovery_event": recovery["seq"],
+                    "reason": recovery["data"].get("reason"),
+                    "measurement": "Operator-declared delay start to its explicitly linked context resolution receipt; not model compute time",
+                },
+            )
         self.edges = [
             e
             for e in self.edges
@@ -670,6 +697,11 @@ class Trace:
                 (s["start_us"], s["end_us"]) for s in selected if s["category"] == "Tool execution"
             ],
             "Operator pause": subtract([(start, end)], self.processes) if self.processes else [],
+            "Operator recovery": [
+                (s["start_us"], s["end_us"])
+                for s in selected
+                if s["category"] == "Operator recovery"
+            ],
         }
         changes = defaultdict(Counter)
         for group, intervals in groups.items():

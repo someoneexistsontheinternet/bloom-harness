@@ -190,6 +190,10 @@ receipts distinguish runner downtime when available; their absence does not impl
 an operator pause. Actor rows in the viewer are collapsible display groups and
 include idle gaps. The complete Chrome trace remains available independently of
 the inline view; the latter loads a pinned visualization component from its CDN.
+An operator-declared recovery delay is shown separately when a journal recovery
+record supplies its start and a context-resolution receipt explicitly links back
+to it. Unresolved recovery records do not invent a completed duration. The timing
+summary keeps recovery time distinct from model activity, including overlaps.
 
 For the full browser viewer, use the lane-based timeline, event ledger and side
 inspector adapted from the earlier Bloom explorer:

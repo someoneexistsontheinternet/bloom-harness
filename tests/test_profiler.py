@@ -220,6 +220,52 @@ def test_missing_process_receipts_do_not_invent_operator_downtime(tmp_path, monk
     assert not trace.metrics(trace.cases[0])["wall_states"].get("Operator pause")
 
 
+@pytest.mark.parametrize("resolved", [False, True])
+def test_explicit_operator_recovery_is_separate_and_requires_a_resolution(
+    tmp_path, monkeypatch, resolved
+):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
+    from build_profiler_site import build
+
+    workspace, run, _ = fixture_trace(tmp_path, monkeypatch)
+    store = Store(workspace)
+    monkeypatch.setattr("bloom41.store.now", lambda: "2026-11-26T00:00:06+00:00")
+    recovery = store.event(
+        "operator.recovery",
+        "fixture-context",
+        {"delay_started_at": "2026-11-26T00:00:03.700000+00:00", "reason": "Fixture repair"},
+        key="operator-repair:fixture",
+    )
+    if resolved:
+        monkeypatch.setattr("bloom41.store.now", lambda: "2026-11-26T00:00:06.100000+00:00")
+        end = store.event(
+            "context.finished",
+            "astra",
+            {"request": "fixture-context", "operator_resolution": recovery["key"]},
+            key="context-finished:fixture-context",
+        )
+    store.close()
+    trace = profiler.Trace(workspace, run).build()
+    intervals = [s for s in trace.spans if s["category"] == "Operator recovery"]
+    case = trace.metrics(trace.cases[0])
+    assert sum(case["wall_states"].values()) == pytest.approx(5)
+    assert case["categories"]["Model decision"]["union_seconds"] == pytest.approx(1.8)
+    if not resolved:
+        assert not intervals
+        assert "Operator recovery" not in case["categories"]
+        return
+    assert len(intervals) == 1
+    assert intervals[0]["end_us"] - intervals[0]["start_us"] == 2_400_000
+    assert intervals[0]["end_event"] == end["seq"]
+    assert intervals[0]["attributes"]["recovery_event"] == recovery["seq"]
+    assert case["categories"]["Operator recovery"]["union_seconds"] == pytest.approx(1.3)
+    assert any("Operator recovery" in key and "Model call" in key for key in case["wall_states"])
+    data, _ = build(trace, tmp_path / "site")
+    span = next(s for s in data["spans"] if s["category"] == "Operator recovery")
+    assert span["l"] == "runtime" and span["k"] == "wait"
+    assert next(e for e in data["events"] if e["n"] == span["a"])["derived"]
+
+
 def test_profiler_rejects_missing_or_modified_originals(tmp_path, monkeypatch):
     workspace, run, _ = fixture_trace(tmp_path, monkeypatch)
     path = next((workspace / "control/events").glob("*.json"))
