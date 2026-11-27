@@ -17,6 +17,9 @@ latest user corrections over inherited v3/v4 assumptions.
 - Terra gathers context and monitors; it never owns substantive work. Sol owns its
   work and the context accompanying its outgoing messages. Only continuous Astra
   creates persistent Sol identities. Self-forks retain their owner's identity.
+- Keep Terra's working notes small and separate from full audit history. Supply
+  activity facts directly, batch routine monitoring, and expose bulk evidence to
+  Terra by reference. Preserve native tool continuations within each request.
 - Capture outgoing message content from the model's final field. send_message
   prepares sender-selected files, existing outputs and new tool results before
   atomic delivery. Delivery is independent of assignment completion.

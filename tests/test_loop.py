@@ -104,6 +104,23 @@ async def test_common_loop_delivers_real_command_evidence_then_stays_idle(tmp_pa
     await loop.run(seconds=0.15)
     assert len(provider.requests) == purchases
     assert all(j["status"] == "completed" for j in loop.jobs.states())
+    (activity,) = [
+        e["data"] for e in loop.store.events("message.prepared") if e["data"]["kind"] == "activity"
+    ]
+    activity_text = loop.store.read(activity["body"]).decode()
+    assert (
+        '"tool": "bash"' in activity_text and '"owner_request": "Please check 2+2' in activity_text
+    )
+    assert "arguments" in activity_text and "accepted_results" in activity_text
+    assert activity["attachments"][0]["expose"] == "reference"
+    record = (
+        loop.agents.path("terra-calculator")
+        / "inbox"
+        / activity["id"]
+        / "attachments"
+        / activity["attachments"][0]["name"]
+    )
+    assert json.loads(record.read_text())["name"] == "bash"
     loop.store.close()
     reopened = Loop(tmp_path, provider, heartbeat=0.01, trusted_tools=sys.platform != "darwin")
     await reopened.run(seconds=0.15)
@@ -454,9 +471,9 @@ def test_terra_does_not_merge_distinct_context_continuations_for_the_same_owner(
         metadata={"context_request": continuation},
     )
     first = loop.ready(terra)
-    assert [p["id"] for p in first] == ["activity"]
-    loop.messages.consume(first, "activity-turn")
+    assert [p["id"] for p in first] == ["continuation"]
+    assert first[0]["metadata"]["context_request"]["request_id"] == "context-real"
+    loop.messages.consume(first, "continuation-turn")
     second = loop.ready(terra)
-    assert [p["id"] for p in second] == ["continuation"]
-    assert second[0]["metadata"]["context_request"]["request_id"] == "context-real"
+    assert [p["id"] for p in second] == ["activity"]
     loop.store.close()

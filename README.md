@@ -17,6 +17,14 @@ another Terra pass. A new message still receives recipient-side context, and an
 unread instruction takes precedence over handling an older tool result. Results
 that arrive during context preparation can join the same owner turn.
 
+Terra receives activity facts and retrievable original call records, and batches
+pending routine activity for one work scope. Required context and tool
+continuations take precedence. Its working view keeps at most eight prior notes
+of 512 tokens each, plus an older approved memo if present and the current
+request's exact native history. That prefix stays frozen across asynchronous
+tools. Full packets and responses remain in the audit history. Attachments are
+references in Terra's input; their original owner-facing package is preserved.
+
 `send_message` takes the exact final-field text, freezes selected file revisions,
 waits on named existing jobs or new contextual tools, and publishes one complete
 package. Delivery does not end the agent's assignment. Only continuous Astra can

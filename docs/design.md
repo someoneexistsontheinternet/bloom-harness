@@ -4,6 +4,15 @@ The common loop is filesystem inbox → recipient Terra → persistent agent →
 filesystem outbound. Astra directs and reviews; Sol implements; Terra gathers
 context and surfaces material deviations; Luna performs scoped evidence reading.
 
+Terra's current request is a temporary working view over the immutable audit
+history. It selects at most eight previous notes of 512 tokens each and preserves
+the exact native history of the current context request. The selected prefix is
+frozen while that request waits for tools. Full packets and responses remain in
+history/; they are not copied into every later monitoring decision. Evidence
+attachments reach Terra as retrievable references while the owner retains its
+original package. Routine activity for the same work scope can be inspected
+together, with operation facts, progress and exact records supplied directly.
+
 Each agent has tools/, inbox/, outbound/, history/, memory/ and work/. Tool scripts
 expose native definitions through typed Python entry points. The runner injects
 a small Tool() client with actor-bound API authority, shared model calling and

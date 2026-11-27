@@ -7,7 +7,7 @@ from pathlib import Path
 from .agents import Actor, Agents, PROFILES
 from .models import final_text, visible
 from .store import atomic, digest, encoded, uid
-from .tokens import count
+from .tokens import count, limit
 from .tool import discover
 
 
@@ -110,10 +110,112 @@ class Context:
             items.extend(self.store.json(row["data"]["items"]))
         return items
 
-    def append(self, actor, items, *, key):
-        row = self.store.event(
-            "history.appended", actor.scope, {"items": self.store.put(items)}, key=key
-        )
+    @staticmethod
+    def episode(packages):
+        for package in packages:
+            meta = package.get("metadata", {})
+            info = meta if package["kind"] == "context_request" else meta.get("context_request")
+            if info and info.get("request_id"):
+                return info["request_id"]
+        return next((p.get("metadata", {}).get("origin") or p["id"] for p in packages), None)
+
+    def working_history(self, actor, episode=None):
+        if self.agents.get(actor)["role"] != "terra":
+            return self.history(actor)
+        snap = self.snapshot(actor)
+        prefix = self.store.json(snap["data"]["prefix"])
+        items = prefix[:1]
+        # An older approved memo can remain; its arbitrary retained input tail
+        # cannot. Complete original history is still in history/ and the journal.
+        for part in prefix[1:]:
+            text = part.get("content")
+            if isinstance(text, str) and text.startswith("Owner-approved working memo:"):
+                items.append(part)
+                break
+        notes = self.store.events("context.note", actor.scope)
+        if not notes:
+            # Read-only projection for workspaces created before context.note.
+            for row in self.store.events("history.appended", actor.scope):
+                if not row["key"].startswith("turn-history:"):
+                    continue
+                turn = self.store.latest("turn.state", row["key"].split(":", 1)[1])
+                if turn and turn["data"].get("final"):
+                    note = self.note_data(turn["data"], row)
+                    if note["text"].strip():
+                        notes.append({"data": note})
+        for note in [r["data"] for r in notes if r["data"]["episode"] != episode][-8:]:
+            items.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": "Previous context note (not a new request). Original: "
+                            + note["history"]
+                            + "\n"
+                            + note["text"],
+                        }
+                    ],
+                }
+            )
+        if episode:
+            key = "terra-working:" + actor.scope + ":" + episode
+            view = self.store.by_key(key) or self.store.event(
+                "context.working",
+                actor.scope,
+                {"episode": episode, "prefix": self.store.put(items), "snapshot": snap["key"]},
+                key=key,
+            )
+            # Other requests may finish while this one waits for a tool. Its
+            # selected notes and native prefix must not change underneath it.
+            items = list(self.store.json(view["data"]["prefix"]))
+            for row in self.store.events("history.appended", actor.scope):
+                owner = row["data"].get("episode")
+                if owner is None and row["key"].startswith("turn-history:"):
+                    turn = self.store.latest("turn.state", row["key"].split(":", 1)[1])
+                    if turn:
+                        owner = (turn["data"].get("context_request") or {}).get(
+                            "request_id"
+                        ) or turn["data"].get("origin")
+                if owner == episode:
+                    items.extend(self.store.json(row["data"]["items"]))
+        return items
+
+    def note_data(self, turn, history):
+        return {
+            "episode": (turn.get("context_request") or {}).get("request_id") or turn["origin"],
+            "text": limit(self.store.read(turn["final"]).decode(), 512),
+            "history": f"history/{history['seq']:012d}.json",
+            "final": turn["final"],
+        }
+
+    def remember_note(self, actor, turn, history):
+        if self.agents.get(actor)["role"] == "terra" and self.store.read(turn["final"]).strip():
+            self.store.event(
+                "context.note",
+                actor.scope,
+                self.note_data(turn, history),
+                key="context-note:" + turn["id"],
+            )
+
+    def append(self, actor, items, *, key, episode=None):
+        ref = self.store.put(items)
+        row = self.store.by_key(key)
+        if row:
+            if (
+                row["kind"] != "history.appended"
+                or row["subject"] != actor.scope
+                or row["data"]["items"] != ref
+                or row["data"].get("episode") not in (None, episode)
+            ):
+                raise ValueError("History identity reused with different native items or context")
+        else:
+            row = self.store.event(
+                "history.appended",
+                actor.scope,
+                {"items": ref, **({"episode": episode} if episode else {})},
+                key=key,
+            )
         atomic(self.agents.path(actor) / "history" / f"{row['seq']:012d}.json", encoded(items))
         return row
 
@@ -130,7 +232,6 @@ class Context:
             }
         ]
         for item in package["attachments"]:
-            raw = self.store.read(item["source"])
             media = item["media"]
             parts.append(
                 {
@@ -151,6 +252,7 @@ class Context:
                     }
                 )
                 continue
+            raw = self.store.read(item["source"])
             if media in ("image/png", "image/jpeg", "image/webp", "image/gif"):
                 parts.append(
                     {
@@ -189,7 +291,11 @@ class Context:
     def request(self, actor, packages, *, extra=()):
         snap = self.snapshot(actor)
         definitions = self.tools(actor)
-        items = self.history(actor) + [self.content(p) for p in packages] + list(extra)
+        items = (
+            self.working_history(actor, self.episode(packages))
+            + [self.content(p) for p in packages]
+            + list(extra)
+        )
         profile = snap["data"]["profile"]
         request = {
             "model": profile["model"],
@@ -253,7 +359,7 @@ class Context:
 
     async def compact(self, actor, models, *, force=False):
         snap = self.snapshot(actor)
-        items = self.history(actor)
+        items = self.working_history(actor)
         size = count(encoded(visible(items)).decode())
         role = self.agents.get(actor)["role"]
         inputs = len(self.store.events("turn.received", actor.scope, after=snap["seq"]))
