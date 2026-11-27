@@ -97,6 +97,19 @@ class Delivery:
         return result
 
     async def attach_value(self, actor, job, args):
+        key = "value-attachment:" + digest(
+            encoded([actor.scope, job["id"], args["name"], args["value"]])
+        )
+        old = self.store.by_key(key)
+        if old:
+            result = old["data"]
+            # Extraction may still be queued. Reuse the frozen preparation, and
+            # restore its derived local view if an owner edited or removed it.
+            snapshot = Path(result["snapshot_path"])
+            raw = self.store.read(result["source"])
+            if not snapshot.exists() or snapshot.read_bytes() != raw:
+                atomic(snapshot, raw)
+            return result
         value = self.jobs.clean(args["value"])
         ref = self.store.put(value)
         needs_extraction = len(encoded(value).decode()) > 50_000
@@ -119,12 +132,14 @@ class Delivery:
                 if isinstance(path, str):
                     attached = await self.attach_file(actor, job, {"path": path, "reference": True})
                     related.append(attached["id"])
-        return {
+        result = {
             **record,
             "related": related,
             "needs_extraction": needs_extraction,
             "snapshot_path": str(snapshot),
         }
+        self.store.event("attachment.value", actor.scope, result, key=key)
+        return result
 
     async def publish_message(self, actor, job, args):
         recipient = args["recipient"]

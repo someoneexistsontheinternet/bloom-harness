@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 import sys
 
 from bloom41.agents import Actor, Agents
@@ -29,6 +30,46 @@ async def done(jobs, ident):
             return jobs.get(ident)
         await asyncio.sleep(0.02)
     raise AssertionError("Preparation did not settle")
+
+
+async def test_value_preparation_survives_reindex_and_reuses_frozen_evidence(tmp_path, monkeypatch):
+    store = Store(tmp_path)
+    agents = Agents(store)
+    agents.bootstrap()
+    actor = Actor("astra")
+    source = agents.path(actor) / "work/source.txt"
+    source.write_text("first revision")
+    jobs = Jobs(store)
+    job = jobs.submit(actor, "read_file", {"path": "source.txt"})
+    delivery = Delivery(store, jobs)
+    args = {
+        "name": "result.json",
+        "value": {"text": "x" * 50_001, "files": [str(source)], "nested": [jobs.token(job["id"])]},
+    }
+    first = await delivery.attach_value(actor, job, args)
+    assert first["needs_extraction"]
+    assert store.json(first["source"])["nested"] == ["[REDACTED]"]
+    source.write_text("later revision")
+    snapshot = Path(first["snapshot_path"])
+    snapshot.write_text("edited local view")
+    store.sync(rebuild=True)
+
+    def repeated_clean(_):
+        raise AssertionError("Unchanged pending extraction must not repeat preparation")
+
+    monkeypatch.setattr(jobs, "clean", repeated_clean)
+    reopened = Delivery(store, jobs)
+    assert await reopened.attach_value(actor, job, args) == first
+    assert snapshot.read_bytes() == store.read(first["source"])
+    snapshot.unlink()
+    assert await reopened.attach_value(actor, job, args) == first
+    related = store.by_key(first["related"][0])["data"]
+    assert store.read(related["source"]) == b"first revision"
+    assert len(store.events("attachment.value")) == 1
+    monkeypatch.undo()
+    changed = await reopened.attach_value(actor, job, {"name": "result.json", "value": "different"})
+    assert changed["id"] != first["id"]
+    store.close()
 
 
 async def test_send_freezes_files_waits_selected_jobs_and_preserves_final_text(tmp_path):

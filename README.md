@@ -113,6 +113,11 @@ therefore reach its allowance and exit with status 2 after delivering an answer;
 inspect the inbox and run status separately. Unstarted budget-blocked work remains
 available for an explicit later continuation.
 
+Tool-result redaction takes one credential snapshot per value. Sender preparation
+is durable and reused while extraction is pending; repeated scheduler ticks do not
+rebuild the same result or change its frozen supporting-file revisions. Missing or
+edited derived result snapshots are restored from their immutable originals.
+
 Run `.venv/bin/python scripts/check.py` for the offline checks. CI runs them on
 macOS (real sandbox) and Linux (explicit trusted-tools fixtures), then builds the
 distribution. Neither CI nor the demo needs live provider credentials or browser

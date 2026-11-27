@@ -19,6 +19,33 @@ async def settled(jobs, ident):
     raise AssertionError("Tool did not settle")
 
 
+def test_redaction_snapshots_jobs_once_per_value_and_refreshes_between_values(
+    tmp_path, monkeypatch
+):
+    store = Store(tmp_path)
+    Agents(store).bootstrap()
+    jobs = Jobs(store)
+    first = jobs.submit(Actor("astra"), "read_file", {"path": "memory/L0.md"})
+    token = jobs.token(first["id"])
+    original, reads = jobs.states, []
+
+    def states():
+        reads.append(True)
+        return original()
+
+    monkeypatch.setattr(jobs, "states", states)
+    value = {"nested": ["prefix " + token, {"text": token * 2}, None, 3, ""]}
+    assert jobs.clean(value) == {
+        "nested": ["prefix [REDACTED]", {"text": "[REDACTED][REDACTED]"}, None, 3, ""]
+    }
+    assert value["nested"][0] == "prefix " + token
+    assert len(reads) == 1
+    second = jobs.submit(Actor("astra"), "read_file", {"path": "memory/L1.md"})
+    assert jobs.clean(jobs.token(second["id"]) + token) == "[REDACTED][REDACTED]"
+    assert len(reads) == 2
+    store.close()
+
+
 async def test_real_tool_files_and_bash_and_idempotent_start(tmp_path):
     store = Store(tmp_path)
     agents = Agents(store)

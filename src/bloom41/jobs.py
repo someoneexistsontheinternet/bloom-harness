@@ -274,15 +274,27 @@ class Jobs:
         return await handler(self.actor(job), job, arguments)
 
     def clean(self, value):
-        if isinstance(value, str):
-            for state in self.states():
-                value = value.replace(self.token(state["id"]), "[REDACTED]")
-            return value
-        if isinstance(value, dict):
-            return {k: self.clean(v) for k, v in value.items()}
-        if isinstance(value, list):
-            return [self.clean(v) for v in value]
-        return value
+        # No await occurs during this walk. One snapshot covers every string in
+        # the value; rebuilding all job history per leaf blocks the broker loop.
+        tokens = None
+
+        def visit(item):
+            nonlocal tokens
+            if isinstance(item, str):
+                if not item:
+                    return item
+                if tokens is None:
+                    tokens = [self.token(state["id"]) for state in self.states()]
+                for token in tokens:
+                    item = item.replace(token, "[REDACTED]")
+                return item
+            if isinstance(item, dict):
+                return {k: visit(v) for k, v in item.items()}
+            if isinstance(item, list):
+                return [visit(v) for v in item]
+            return item
+
+        return visit(value)
 
     async def launch(self, job):
         actor = self.actor(job)
