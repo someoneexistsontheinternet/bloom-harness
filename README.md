@@ -126,7 +126,7 @@ after operator resume. Force requests remain explicit deliberate boundaries.
 Terra continuations retain their request identity even when unrelated activity
 arrives for the same owner.
 
-Current verification: 73 offline tests pass, including executable CLI exchange,
+Current verification: 74 offline tests pass, including executable CLI exchange,
 exact fork seeds, cancellation, auth checks, sender preparation, superseding
 queued effects, crash recovery and explicit failed-request recovery. Live
 provider transport, native tools and sequential conversation reuse were verified

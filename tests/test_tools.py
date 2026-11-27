@@ -276,6 +276,51 @@ async def test_command_timeout_stops_shell_descendants_and_keeps_partial_output(
         store.close()
 
 
+async def test_cancellation_publishes_no_transient_failure_before_its_terminal_receipt(
+    tmp_path, monkeypatch
+):
+    store = Store(tmp_path)
+    Agents(store).bootstrap()
+    jobs = Jobs(store)
+    job = jobs.submit(Actor("astra"), "bash", {"command": "fixture"})
+    stopped = asyncio.Event()
+
+    class Process:
+        pid = 12345
+        returncode = None
+
+        async def communicate(self):
+            await stopped.wait()
+            return b"partial fixture output", b""
+
+    process = Process()
+
+    async def stamp(pid):
+        assert pid == process.pid
+        return "owned fixture process"
+
+    def signal(pid, kind):
+        assert pid == process.pid
+        assert jobs.get(job["id"])["status"] == "cancelling"
+        process.returncode = -kind
+        stopped.set()
+
+    monkeypatch.setattr(jobs, "process_stamp", stamp)
+    monkeypatch.setattr("bloom41.jobs.os.killpg", signal)
+    jobs.state(job["id"], "running", pid=process.pid, process_stamp="owned fixture process")
+    monitor = asyncio.create_task(jobs.finish_process(job["id"], process))
+    jobs.running[job["id"]] = (process, monitor)
+    await jobs.api(
+        jobs.get(job["id"]), "cancel", {"job_id": job["id"], "reason": "Command timeout"}
+    )
+    terminal = [
+        e["data"] for e in store.events("job.state", job["id"]) if e["data"]["status"] in TERMINAL
+    ]
+    assert terminal and all(e["status"] == "cancelled" for e in terminal)
+    assert terminal[0]["error"] == "Command timeout" and terminal[0]["exit_code"] is not None
+    store.close()
+
+
 async def test_invalid_and_revoked_execution_credentials_are_rejected(tmp_path):
     store = Store(tmp_path)
     Agents(store).bootstrap()

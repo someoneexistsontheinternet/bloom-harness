@@ -869,7 +869,7 @@ class Loop:
                                 "channel.delivered", package["id"], {"channel": "cli"}, key=key
                             )
                 runnable_jobs = any(
-                    j["status"] in ("running", "launching")
+                    j["status"] in ("running", "launching", "cancelling")
                     or j["status"] == "prepared"
                     and self.admit_job(j) is not None
                     for j in self.jobs.states()

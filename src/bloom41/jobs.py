@@ -160,7 +160,7 @@ class Jobs:
             encoded({"address": self.address, "pid": os.getpid()}),
         )
         for job in self.states():
-            if job["status"] in ("running", "launching"):
+            if job["status"] in ("running", "launching", "cancelling"):
                 self.state(
                     job["id"],
                     "uncertain",
@@ -240,13 +240,10 @@ class Jobs:
             if self.actor(target) != self.actor(job):
                 raise PermissionError("Job belongs to another execution identity")
             if action == "cancel":
-                result = await self.cancel(target["id"])
-                if arguments.get("reason"):
-                    latest = self.get(target["id"])
-                    self.state(
-                        target["id"], latest["status"], error=self.clean(str(arguments["reason"]))
-                    )
-                return result
+                return await self.cancel(
+                    target["id"],
+                    reason=self.clean(str(arguments.get("reason") or "Cancellation requested")),
+                )
             if target["id"] == job["id"]:
                 raise ValueError("A job cannot wait for its own completion")
             if arguments.get("wait"):
@@ -303,6 +300,7 @@ class Jobs:
         temporary = root / "work/.tmp"
         temporary.mkdir(exist_ok=True)
         code_root = Path(__file__).resolve().parents[2]
+        python_paths = [Path(__file__).resolve().parent.parent, code_root / "lib"]
         script = self.directory(job["id"]) / "tool.py"
         if not script.exists():
             atomic(script, self.store.read(job["source"]))
@@ -315,8 +313,7 @@ class Jobs:
             "/opt/homebrew",
             sys.base_prefix,
             Path(sys.prefix),
-            code_root / "src",
-            code_root / "lib",
+            *python_paths,
             root,
             self.directory(job["id"]).parent,
         ]
@@ -355,7 +352,7 @@ class Jobs:
             "LANG": "en_US.UTF-8",
             "TMPDIR": str(temporary),
             "PYTHONDONTWRITEBYTECODE": "1",
-            "PYTHONPATH": str(code_root / "src") + os.pathsep + str(code_root / "lib"),
+            "PYTHONPATH": os.pathsep.join(map(str, python_paths)),
         }
         self.state(job["id"], "launching")
         try:
@@ -405,7 +402,15 @@ class Jobs:
         cleaned = self.clean(output.decode(errors="replace"))
         atomic(self.directory(job_id) / "process.log", cleaned.encode())
         job = self.get(job_id)
-        if job["status"] not in TERMINAL:
+        if job["status"] == "cancelling":
+            self.state(
+                job_id,
+                "cancelled",
+                error=job["cancellation_reason"],
+                reason="Owned process stopped",
+                exit_code=proc.returncode,
+            )
+        elif job["status"] not in TERMINAL:
             self.state(
                 job_id,
                 "failed" if proc.returncode else "uncertain",
@@ -468,22 +473,35 @@ class Jobs:
                     continue
             await self.launch(job)
 
-    async def cancel(self, job_id):
+    async def cancel(self, job_id, *, reason="Cancellation requested"):
         job = self.get(job_id)
         if job["status"] in TERMINAL:
             return {"status": job["status"]}
         if job.get("parent"):
             # Children share one isolated executor. Stopping one stops that executor,
             # with explicit terminal/uncertain receipts for its siblings.
-            return await self.cancel(job["parent"])
+            return await self.cancel(job["parent"], reason=reason)
         if job["status"] == "prepared":
-            self.state(job_id, "cancelled", reason="Cancelled before execution")
+            self.state(job_id, "cancelled", reason="Cancelled before execution", error=reason)
         elif job_id in self.running:
             proc, task = self.running[job_id]
-            if proc.returncode is None and await self.process_stamp(proc.pid) == job.get(
-                "process_stamp"
-            ):
-                os.killpg(proc.pid, signal.SIGTERM)
+            if job["status"] == "cancelling":
+                await asyncio.shield(task)
+                return {"status": self.get(job_id)["status"]}
+            stamp = await self.process_stamp(proc.pid) if proc.returncode is None else None
+            if self.get(job_id)["status"] in TERMINAL:
+                return {"status": self.get(job_id)["status"]}
+            if proc.returncode is None:
+                if stamp != job.get("process_stamp"):
+                    self.state(
+                        job_id, "uncertain", error="Executor identity changed; no signal sent"
+                    )
+                    return {"status": "uncertain"}
+                # Record intent before signalling. The process watcher must not
+                # publish a transient failure while cancellation awaits its exit.
+                self.state(job_id, "cancelling", cancellation_reason=reason)
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(proc.pid, signal.SIGTERM)
                 try:
                     await asyncio.wait_for(asyncio.shield(task), 3)
                 except TimeoutError:
@@ -492,7 +510,7 @@ class Jobs:
                     ):
                         os.killpg(proc.pid, signal.SIGKILL)
                     await task
-            self.state(job_id, "cancelled", reason="Owned process stopped")
+            await task
         else:
             raise RuntimeError("Unknown process ownership; inspect instead of signalling")
         return {"status": self.get(job_id)["status"]}
