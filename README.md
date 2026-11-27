@@ -126,7 +126,7 @@ after operator resume. Force requests remain explicit deliberate boundaries.
 Terra continuations retain their request identity even when unrelated activity
 arrives for the same owner.
 
-Current verification: 77 offline tests cover executable CLI exchange,
+Current verification: 76 offline tests cover executable CLI exchange,
 exact fork seeds, cancellation, auth checks, sender preparation, superseding
 queued effects, crash recovery and explicit failed-request recovery. Live
 provider transport, native tools and sequential conversation reuse were verified
@@ -165,12 +165,16 @@ work share the other three slots. This is scheduling metadata, not API authority
 or a latency guarantee: message preparation can still await selected evidence.
 Existing frozen tool versions retain their original declarations.
 
-Actor and model admission prioritize direct owner input, then runnable owners,
-forks and required context, then routine Terra activity and bulk readers. When no
-urgent request is first, every fourth admission serves the oldest waiting work.
-Model capacity remains two simultaneous requests and actor capacity remains four;
-priority does not interrupt an already accepted model request. Queue cancellation
-does not buy a request or leak its slot.
+Actor scheduling prioritizes direct owner input, then runnable owners, forks and
+required context, then routine Terra activity. When no urgent request is first,
+every fourth actor admission serves the oldest waiting work. Actor capacity remains
+four, separately from tool-process capacity.
+
+Independent model API requests start without a global or per-profile concurrency
+slot limit. A lock applies only to duplicate callers using the same request ID.
+The allowance check and durable purchase intent occur together before awaiting
+the provider, so concurrent requests still respect the total call allowance.
+Request deadlines, terminal receipts and protection against uncertain replay remain.
 
 To inspect a completed run without starting the harness:
 

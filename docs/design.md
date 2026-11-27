@@ -41,10 +41,13 @@ can join an already prepared message in one turn. Context preparation accepted
 by an older runner retains its original inputs and completes normally on recovery.
 An accepted long job is a receipt, not a reason to buy another decision. Native
 message phases, source lineage and tool-call correlation are preserved.
-Admission prioritizes owner instructions and runnable owners/forks ahead of
-optional monitoring and bulk readers, with periodic oldest-work service. The
-actual shared model queue applies this policy as well as actor scheduling. An
-accepted request is never silently cancelled or repurchased to obtain priority.
+Actor scheduling prioritizes owner instructions and runnable owners/forks ahead
+of optional monitoring, with periodic oldest-work service. Model API calls have
+no global or per-profile concurrency-slot limit. Duplicate callers for one request
+ID are serialized for receipt reuse; independent requests start immediately after
+the call-allowance check and durable purchase intent. Actor/tool execution limits
+are separate from model concurrency. An accepted request is never silently
+cancelled or repurchased to obtain priority.
 
 Only the continuous Astra identity may create persistent Sols. A Sol may fork its
 own exact context into temporary branches. Authorization derives from the

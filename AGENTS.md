@@ -25,6 +25,8 @@ latest user corrections over inherited v3/v4 assumptions.
   atomic delivery. Delivery is independent of assignment completion.
 - Wait locally. Wake only for material input/results or explicitly continuing
   independent work. Do not buy model calls to poll jobs or announce receipts.
+- Model API calls have no harness concurrency-slot limit. Preserve per-request
+  deduplication, durable purchase intents and the explicit total call allowance.
 - Return terminal tool results directly to their owner; do not buy a Terra pass
   for each result. New instructions must not be skipped while processing results.
 - Keep native histories and 1M configured capacity. Persistent owners approve

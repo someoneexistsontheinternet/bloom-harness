@@ -587,7 +587,6 @@ class Loop:
                     "origin": origin,
                     "reply_to": default_target,
                     "context_request": request_context,
-                    "priority": self.priority(packages),
                 }
                 self.store.event(
                     "turn.received",
@@ -604,10 +603,6 @@ class Loop:
                     purpose="agent",
                     profile=self.agents.get(actor)["role"],
                     origin=turn["origin"],
-                    priority=turn.get(
-                        "priority",
-                        2 if (turn.get("context_request") or {}).get("activity_only") else 1,
-                    ),
                 )
                 text = final_text(response)
                 turn = self.save_turn(

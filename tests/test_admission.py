@@ -2,79 +2,98 @@ import asyncio
 
 import pytest
 
-from bloom41.admission import Admission
 from bloom41.agents import Actor
 from bloom41.loop import Loop
-from bloom41.models import Models
+from bloom41.models import BudgetExceeded, Models
 from bloom41.store import Store
 from test_models_context import Scripted, reply
 
 
-async def test_model_capacity_prioritizes_owners_and_steering_but_services_old_readers(tmp_path):
-    entered, release = asyncio.Event(), asyncio.Event()
-    order = []
+async def test_distinct_models_overlap_and_cancellation_does_not_hold_other_calls(tmp_path):
+    entered, later_entered, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
 
     class Provider(Scripted):
         async def generate(self, request):
-            name = request["label"]
-            order.append(name)
-            if name == "running-reader":
+            self.requests.append(request)
+            if len(self.requests) == 9:
                 entered.set()
-                await release.wait()
-            await asyncio.sleep(0)
-            return reply(name), []
+            if request["label"] == "later-owner":
+                later_entered.set()
+            await release.wait()
+            return reply(request["label"]), []
 
     store = Store(tmp_path)
-    models = Models(store, Provider(), concurrency=1)
-    models.grant(20)
+    provider = Provider()
+    models = Models(store, provider)
+    models.grant(10)
 
-    def submit(name, **kwargs):
+    def submit(name, profile, purpose="agent"):
         return asyncio.create_task(
-            models.call(Actor("astra"), {"input": [], "label": name}, call_id=name, **kwargs)
+            models.call(
+                Actor("astra" if profile == "luna" else profile),
+                {"input": [], "label": name},
+                call_id=name,
+                profile=profile,
+                purpose=purpose,
+            )
         )
 
-    first = submit("running-reader", purpose="tool_reader")
-    await entered.wait()
-    tasks = [submit("old-reader", purpose="tool_reader"), submit("monitor", profile="terra")]
-    tasks.extend(submit(f"owner-{n}", profile="sol") for n in range(5))
-    tasks.append(submit("steering", priority=0))
-    await asyncio.sleep(0)
-    assert len(models.slots.waiting) == 8 and models.slots.active == 1
-    assert len(store.events("model.started")) == 1
-    release.set()
-    await asyncio.gather(first, *tasks)
-    assert order[:4] == ["running-reader", "steering", "owner-0", "old-reader"]
-    assert order.index("monitor") < len(order) - 1
-    assert len(order) == len(store.events("model.completed")) == 9
-    assert models.slots.active == 0 and not models.slots.waiting
-    store.close()
+    tasks = [submit(f"reader-{n}", "luna", "tool_reader") for n in range(6)]
+    tasks.extend(submit(profile, profile) for profile in ("astra", "sol", "terra"))
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=5)
+        assert len(store.events("model.started")) == 9
+        assert not store.events("model.completed")
+        assert all(not task.done() for task in tasks)
+        tasks[0].cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await tasks[0]
+        assert store.by_key("model-failed:reader-0")["data"]["uncertain"]
+        tasks.append(submit("later-owner", "astra"))
+        await asyncio.wait_for(later_entered.wait(), timeout=5)
+        assert len(provider.requests) == 10 and not store.events("model.completed")
+        release.set()
+        await asyncio.gather(*tasks[1:])
+        assert len(store.events("model.completed")) == 9
+        assert len(store.events("model.failed")) == 1
+    finally:
+        release.set()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        store.close()
 
 
-@pytest.mark.parametrize("after_grant", [False, True])
-async def test_cancelled_admission_cannot_leak_or_double_release_a_slot(after_grant):
-    slots = Admission(1)
-    holder = slots.slot()
-    await holder.__aenter__()
-    purchased = []
+async def test_overlapping_requests_do_not_overspend_the_call_allowance(tmp_path):
+    entered, release = asyncio.Event(), asyncio.Event()
 
-    async def work():
-        async with slots.slot():
-            purchased.append(True)
+    class Provider(Scripted):
+        async def generate(self, request):
+            self.requests.append(request)
+            if len(self.requests) == 3:
+                entered.set()
+            await release.wait()
+            return reply("finished"), []
 
-    pending = asyncio.create_task(work())
-    await asyncio.sleep(0)
-    if after_grant:
-        await holder.__aexit__(None, None, None)
-        pending.cancel()
-    else:
-        pending.cancel()
-        await holder.__aexit__(None, None, None)
-    with pytest.raises(asyncio.CancelledError):
-        await pending
-    assert not purchased and slots.active == 0 and not slots.waiting
-    async with slots.slot():
-        assert slots.active == 1
-    assert slots.active == 0
+    store = Store(tmp_path)
+    provider = Provider()
+    models = Models(store, provider)
+    models.grant(3)
+    tasks = [
+        asyncio.create_task(models.call(Actor("astra"), {"input": []}, call_id=f"call-{n}"))
+        for n in range(8)
+    ]
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=5)
+        assert len(store.events("model.started")) == 3 and models.allowance() == 0
+        assert not store.events("model.completed")
+        release.set()
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        assert sum(isinstance(result, BudgetExceeded) for result in results) == 5
+        assert len(provider.requests) == len(store.events("model.completed")) == 3
+        assert not store.events("model.failed")
+    finally:
+        release.set()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        store.close()
 
 
 async def test_ready_owner_enters_actor_slots_ahead_of_older_optional_monitors(tmp_path):

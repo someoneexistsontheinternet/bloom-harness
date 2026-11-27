@@ -276,7 +276,7 @@ class Trace:
                     finish=model["seq"],
                     parent="turn:" + turn,
                     attributes={
-                        "measurement": "Includes unseparated token estimation, model-slot wait and local preparation after turn.received"
+                        "measurement": "Includes token estimation and local preparation after turn.received; older harness revisions may also include model-slot waits"
                     },
                 )
         for job, rows in job_rows.items():

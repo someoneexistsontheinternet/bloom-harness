@@ -1,4 +1,4 @@
-"""One model caller: exact requests, explicit admission and no uncertain retries."""
+"""One model caller: independent requests, durable budgets and no uncertain retries."""
 
 import asyncio
 import base64
@@ -9,7 +9,6 @@ import time
 
 import httpx
 
-from .admission import Admission
 from .store import encoded, uid
 from .tokens import count
 
@@ -175,10 +174,9 @@ class Responses:
 
 
 class Models:
-    def __init__(self, store, provider, *, concurrency=2):
+    def __init__(self, store, provider):
         self.store = store
         self.provider = provider
-        self.slots = Admission(concurrency)
         self.inflight = {}
         simulated = bool(getattr(provider, "simulated", False))
         if not simulated and store.events("workspace.simulated"):
@@ -216,11 +214,7 @@ class Models:
             return None
         return sum(g["data"]["calls"] for g in grants) - len(self.store.events("model.started"))
 
-    async def call(
-        self, actor, request, *, call_id, purpose="agent", profile=None, origin=None, priority=None
-    ):
-        if priority is None:
-            priority = 3 if purpose == "tool_reader" else 2 if profile == "terra" else 1
+    async def call(self, actor, request, *, call_id, purpose="agent", profile=None, origin=None):
         async with self.inflight.setdefault(call_id, asyncio.Lock()):
             return await self._call(
                 actor,
@@ -229,10 +223,9 @@ class Models:
                 purpose=purpose,
                 profile=profile,
                 origin=origin,
-                priority=priority,
             )
 
-    async def _call(self, actor, request, *, call_id, purpose, profile, origin, priority):
+    async def _call(self, actor, request, *, call_id, purpose, profile, origin):
         body = self.provider.prepare(request) if hasattr(self.provider, "prepare") else request
         started = self.store.by_key("model-started:" + call_id)
         if started and (
@@ -249,55 +242,55 @@ class Models:
         estimate = count(encoded(visible(body)).decode())
         if estimate > 1_000_000 - 32768:
             raise ValueError("Request exceeds the configured 1M window; originals retained")
-        async with self.slots.slot(priority):
-            allowance = self.allowance()
-            if allowance is not None and allowance <= 0:
-                raise BudgetExceeded("No model call allowance remains")
+        # No await separates the allowance check from the durable purchase intent.
+        # Independent calls can overlap without overspending the single runner's budget.
+        allowance = self.allowance()
+        if allowance is not None and allowance <= 0:
+            raise BudgetExceeded("No model call allowance remains")
+        self.store.event(
+            "model.started",
+            actor.scope,
+            {
+                "id": call_id,
+                "agent": actor.agent,
+                "branch": actor.branch,
+                "purpose": purpose,
+                "profile": profile,
+                "origin": origin,
+                "input_estimate": estimate,
+                "request": self.store.put(body),
+            },
+            key="model-started:" + call_id,
+        )
+        try:
+            response, trace = await self.provider.generate(body)
+            if response.get("status", "completed") != "completed":
+                raise ModelFailure("Incomplete response", trace=trace)
             self.store.event(
-                "model.started",
+                "model.completed",
                 actor.scope,
                 {
                     "id": call_id,
-                    "agent": actor.agent,
-                    "branch": actor.branch,
-                    "purpose": purpose,
+                    "response": self.store.put(response),
+                    "trace": self.store.put(trace),
+                    "usage": response.get("usage"),
                     "profile": profile,
                     "origin": origin,
-                    "priority": priority,
-                    "input_estimate": estimate,
-                    "request": self.store.put(body),
                 },
-                key="model-started:" + call_id,
+                key="model-completed:" + call_id,
             )
-            try:
-                response, trace = await self.provider.generate(body)
-                if response.get("status", "completed") != "completed":
-                    raise ModelFailure("Incomplete response", trace=trace)
-                self.store.event(
-                    "model.completed",
-                    actor.scope,
-                    {
-                        "id": call_id,
-                        "response": self.store.put(response),
-                        "trace": self.store.put(trace),
-                        "usage": response.get("usage"),
-                        "profile": profile,
-                        "origin": origin,
-                    },
-                    key="model-completed:" + call_id,
-                )
-                return response
-            except (Exception, asyncio.CancelledError) as exc:
-                cleaner = getattr(self.provider, "clean", lambda value: value)
-                self.store.event(
-                    "model.failed",
-                    actor.scope,
-                    {
-                        "id": call_id,
-                        "error": cleaner(type(exc).__name__ + ": " + str(exc)),
-                        "uncertain": getattr(exc, "uncertain", True),
-                        "trace": self.store.put(cleaner(getattr(exc, "trace", []))),
-                    },
-                    key="model-failed:" + call_id,
-                )
-                raise
+            return response
+        except (Exception, asyncio.CancelledError) as exc:
+            cleaner = getattr(self.provider, "clean", lambda value: value)
+            self.store.event(
+                "model.failed",
+                actor.scope,
+                {
+                    "id": call_id,
+                    "error": cleaner(type(exc).__name__ + ": " + str(exc)),
+                    "uncertain": getattr(exc, "uncertain", True),
+                    "trace": self.store.put(cleaner(getattr(exc, "trace", []))),
+                },
+                key="model-failed:" + call_id,
+            )
+            raise
