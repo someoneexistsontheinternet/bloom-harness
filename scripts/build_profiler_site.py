@@ -372,14 +372,15 @@ def build(trace, out):
     views = {}
     for case in trace.cases:
         start, end = case["start_us"] - trace.first, case["end_us"] - trace.first
-        inside = [s for s in spans if s["u"] >= start and s["v"] <= end]
-        model_spans = [s for s in inside if s["k"] == "model"]
+        overlapping = [s for s in spans if s["u"] < end and s["v"] > start]
+        model_spans = [s for s in overlapping if s["k"] == "model"]
+        elapsed = lambda s: min(s["v"], end) - max(s["u"], start)
         queue = sorted(
-            [s for s in inside if s["category"] == "Tool queue"],
-            key=lambda s: s["v"] - s["u"],
+            [s for s in overlapping if s["category"] == "Tool queue"],
+            key=elapsed,
             reverse=True,
         )
-        longest = max(model_spans, key=lambda s: s["v"] - s["u"], default=None)
+        longest = max(model_spans, key=elapsed, default=None)
         landmarks = [[case["input_event"], "Question received"]]
         if longest:
             landmarks.append([longest["a"], "Longest model call"])

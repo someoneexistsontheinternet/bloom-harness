@@ -126,7 +126,7 @@ after operator resume. Force requests remain explicit deliberate boundaries.
 Terra continuations retain their request identity even when unrelated activity
 arrives for the same owner.
 
-Current verification: 74 offline tests pass, including executable CLI exchange,
+Current verification: 77 offline tests cover executable CLI exchange,
 exact fork seeds, cancellation, auth checks, sender preparation, superseding
 queued effects, crash recovery and explicit failed-request recovery. Live
 provider transport, native tools and sequential conversation reuse were verified
@@ -136,9 +136,16 @@ preserved. The separate helper builds and its signature verifies. After its
 explicit Automation grant, live v4.1 Safari fixtures also passed: whole discussion,
 tables, useful links and native screenshots. No production service or gateway
 deployment is included.
-The subsequent Terra working-view, result-delivery, compaction, admission and
-sender-preparation changes have offline and retained-history verification; no
-new live market run has measured their end-to-end latency.
+The subsequent Terra changes were exercised in a fresh sequential live pair on
+frozen revision `1b6de69`: FRMI answered in 46m49s / 125 requests and AVGO in
+47m23s / 119 requests. Including background work, the recording has 264 terminal
+model receipts and zero compactions. This required operator recovery: an empty
+post-answer response blocked Astra, and 2m11s of AVGO's elapsed time belongs to
+that recovery. The earlier FRMI run also included about ten minutes of operator
+downtime. These runs demonstrate reduced model traffic, not a clean uninterrupted
+pass or an established latency improvement. Long reader/tool queues and shell-based
+polling remain. Background work was stopped after both answers; unstarted jobs
+remain retained without replay.
 
 A user-inbox answer does not terminate other agents' outstanding work. `run` may
 therefore reach its allowance and exit with status 2 after delivering an answer;
@@ -194,6 +201,9 @@ An operator-declared recovery delay is shown separately when a journal recovery
 record supplies its start and a context-resolution receipt explicitly links back
 to it. Unresolved recovery records do not invent a completed duration. The timing
 summary keeps recovery time distinct from model activity, including overlaps.
+Jobs still prepared at the last receipt appear as unfinished queue intervals,
+without a fabricated admission or completion. Per-question queue totals are
+clipped to the question's answer boundary.
 
 For the full browser viewer, use the lane-based timeline, event ledger and side
 inspector adapted from the earlier Bloom explorer:

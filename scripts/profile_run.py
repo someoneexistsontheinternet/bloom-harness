@@ -286,21 +286,27 @@ class Trace:
             data = last["data"]
             actor = data.get("branch") or data["agent"]
             queue_end = start or end or last
+            queued_at_cutoff = not start and not end and data["status"] == "prepared"
             self.add(
                 "queue:" + job,
                 data["name"] + " · queued",
                 "Tool queue",
                 actor,
                 first["us"],
-                queue_end["us"],
+                self.last if queued_at_cutoff else queue_end["us"],
                 begin=first["seq"],
-                finish=queue_end["seq"],
+                finish=None if queued_at_cutoff else queue_end["seq"],
+                status="warning" if queued_at_cutoff else "ok",
                 attributes={
                     "native_id": job,
                     "tool": data["name"],
                     "parent_job": data.get("parent"),
                     "turn": data.get("turn"),
                     "state": data["status"],
+                    "queued_at_recording_end": queued_at_cutoff,
+                    "measurement": "Still queued at the last journal receipt; this boundary is not execution or completion"
+                    if queued_at_cutoff
+                    else "Preparation receipt to admission or terminal receipt",
                 },
             )
             if start:
@@ -725,7 +731,7 @@ class Trace:
         assert abs(sum(wall.values()) - (end - start) / 1e6) < 0.0001
         queue = sorted(
             [s for s in selected if s["category"] == "Tool queue"],
-            key=lambda s: s["end_us"] - s["start_us"],
+            key=lambda s: min(s["end_us"], end) - max(s["start_us"], start),
             reverse=True,
         )
         context = sorted(
@@ -749,9 +755,12 @@ class Trace:
                     "id": s["id"],
                     "actor": s["actor"],
                     "name": s["name"],
-                    "seconds": (s["end_us"] - s["start_us"]) / 1e6,
+                    "seconds": (min(s["end_us"], end) - max(s["start_us"], start)) / 1e6,
                     "start_event": s["start_event"],
                     "end_event": s["end_event"],
+                    "queued_at_recording_end": s["attributes"].get(
+                        "queued_at_recording_end", False
+                    ),
                 }
                 for s in queue[:15]
             ],

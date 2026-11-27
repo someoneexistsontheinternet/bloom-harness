@@ -15,7 +15,7 @@ profiler = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(profiler)
 
 
-def fixture_trace(tmp_path, monkeypatch):
+def fixture_trace(tmp_path, monkeypatch, *, pending=False):
     store = Store(tmp_path / "workspace")
     base = datetime(2026, 11, 26, tzinfo=timezone.utc)
 
@@ -166,6 +166,8 @@ def fixture_trace(tmp_path, monkeypatch):
         "j-completed",
     )
     event(4.2, "job.notified", "j1", {"woke": True}, "job-notified:j1")
+    if pending:
+        event(4.3, "job.state", "queued", {**job, "id": "queued", "status": "prepared"}, "queued")
     message(
         5, "answer", "astra", "user", metadata={"origin": "fixture-question", "sender_job": "j1"}
     )
@@ -288,6 +290,30 @@ def test_overlap_math_and_nested_private_projection():
     assert 'private"' not in json.dumps(projected)
     assert "credential" not in json.dumps(projected)
     assert projected["text"] == "visible"
+
+
+def test_unstarted_queue_is_censored_at_recording_end_and_clipped_to_case(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
+    from build_profiler_site import build
+
+    workspace, run, _ = fixture_trace(tmp_path, monkeypatch, pending=True)
+    store = Store(workspace)
+    monkeypatch.setattr("bloom41.store.now", lambda: "2026-11-26T00:00:06+00:00")
+    store.event("operator.stop_requested", "fixture", {}, key="stop")
+    store.close()
+    trace = profiler.Trace(workspace, run).build()
+    queue = trace.span_by_id["queue:queued"]
+    assert queue["end_us"] - queue["start_us"] == 1_700_000
+    assert queue["status"] == "warning" and queue["end_event"] is None
+    assert queue["attributes"]["queued_at_recording_end"]
+    assert "job:queued" not in trace.span_by_id
+    waiting = next(
+        q for q in trace.metrics(trace.cases[0])["top_queues"] if q["id"] == "queue:queued"
+    )
+    assert waiting["seconds"] == pytest.approx(0.7)
+    assert waiting["queued_at_recording_end"] and waiting["end_event"] is None
+    data, _ = build(trace, tmp_path / "site")
+    assert [queue["start_event"], "Longest tool queue"] in data["views"]["fixture"]["landmarks"]
 
 
 def test_lane_viewer_preserves_native_boundaries_and_lazy_visible_payloads(tmp_path, monkeypatch):
