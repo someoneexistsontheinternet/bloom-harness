@@ -31,6 +31,15 @@ package. Delivery does not end the agent's assignment. Only continuous Astra can
 create persistent Sols. Self-forks pin the exact parent request and retain the
 owner's identity, with separate history and writable files.
 
+Use `additional_content.question` when preparing evidence before final text exists.
+Large additions without that purpose remain references, with an explicit sender
+receipt; no empty-question reader call is bought. `additional_content.references`
+retains selected original files without another extraction. Existing selected
+evidence can be sent through `files` or `results`. Extraction failures accompany
+the message as limitations alongside the retained original. New profiles guide
+Astra toward one lead owner per coherent deliverable and early focused self-forks;
+this is planning guidance, not a hard-coded specialist topology.
+
 ```sh
 uv sync --group dev
 .venv/bin/bloom41 --root logs/demo-first demo

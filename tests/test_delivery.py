@@ -1,6 +1,9 @@
 import asyncio
 from pathlib import Path
 import sys
+import json
+
+import pytest
 
 from bloom41.agents import Actor, Agents
 from bloom41.delivery import Delivery
@@ -169,6 +172,81 @@ async def test_prepared_context_survives_tool_only_response_and_missing_extracti
         assert len(package["attachments"]) == 1
         assert b"source unavailable" in store.read(package["attachments"][0]["source"])
         assert len([j for j in jobs.states() if j["name"] == "broken"]) == 1
+    finally:
+        await jobs.close()
+        store.close()
+
+
+@pytest.mark.parametrize("mode", ["missing-purpose", "purpose", "reference", "failed-reader"])
+async def test_large_sender_evidence_never_uses_an_empty_question_or_blocks_delivery(
+    tmp_path, mode
+):
+    store = Store(tmp_path)
+    agents = Agents(store)
+    agents.bootstrap()
+    actor = Actor("astra")
+    root = agents.path(actor)
+    original = "Original source evidence. " * 3000
+    (root / "work/source.txt").write_text(original)
+    (root / "tools/extract.py").write_text('''async def run(tool, path: str, question: str):
+    """Return an exact purpose or a scoped reader failure for this fixture."""
+    assert "Verify the dated condition" in question
+    if "simulate failure" in question:
+        raise ValueError("fixture source unavailable")
+    return {"summary": "Verified condition", "question": question}
+''')
+    jobs = Jobs(store, trusted_tools=sys.platform != "darwin")
+    delivery = Delivery(store, jobs)
+    jobs.handlers.update(delivery.handlers())
+    await jobs.start()
+    try:
+        turn(store, actor, "prepare", "")
+        extra = {"references" if mode == "reference" else "files": ["source.txt"]}
+        if mode in ("purpose", "failed-reader"):
+            extra["question"] = "Verify the dated condition" + (
+                "; simulate failure" if mode == "failed-reader" else ""
+            )
+        job = jobs.submit(
+            actor,
+            "send_message",
+            {"recipient": "user", "additional_content": extra},
+            turn="prepare",
+        )
+        prepared = await done(jobs, job["id"])
+        assert prepared["status"] == "completed", prepared
+        outcome = store.json(prepared["result"])
+        assert outcome["status"] == "needs_final_message"
+        assert not Messages(store).pending("user")
+        readers = [j for j in jobs.states() if j["name"] == "extract"]
+        assert len(readers) == (1 if mode in ("purpose", "failed-reader") else 0)
+        if mode == "missing-purpose":
+            assert (
+                outcome["reference_only"]
+                and "No extraction was purchased" in outcome["preparation_note"]
+            )
+        # Publication reuses the exact already prepared revision, even if the
+        # source has changed before the addressed final message arrives.
+        (root / "work/source.txt").write_text("Later unselected source revision")
+        text = "---\ntarget: user\n---\nMy exact final message."
+        turn(store, actor, "final", text)
+        send = jobs.submit(actor, "send_message", {"recipient": "user"}, turn="final")
+        assert (await done(jobs, send["id"]))["status"] == "completed"
+        (package,) = Messages(store).pending("user")
+        assert store.read(package["body"]).decode() == text
+        assert store.read(package["attachments"][0]["source"]).decode() == original
+        assert package["attachments"][0]["expose"] == "reference"
+        if mode == "failed-reader":
+            assert any(
+                "fixture source unavailable" in store.read(a["source"]).decode()
+                for a in package["attachments"][1:]
+            )
+        elif mode == "purpose":
+            evidence = json.loads(store.read(package["attachments"][1]["source"]))
+            assert (
+                evidence["summary"] == "Verified condition"
+                and "Verify the dated condition" in evidence["question"]
+            )
+        assert not store.events("model.started")
     finally:
         await jobs.close()
         store.close()

@@ -26,6 +26,11 @@ authority and atomically publishes one complete package. Recipient Terra may
 gather its own extra context; it does not assemble evidence on the sender's behalf.
 Missing requested evidence is explicit. Sending does not terminate a persistent
 agent, wait for the recipient's answer, or impose report-quality acceptance gates.
+Preparation may carry an explicit evidence question before the final-field body
+exists. Without either, large additions stay references and the receipt states
+that no extraction ran. Explicit reference attachments do not buy another read.
+A failed extraction retains the original and adds its limitation to the package.
+The exact final-field body remains the only outgoing message content.
 
 The scheduler launches independent tools concurrently, records one native result
 per call and parks without inference. Later results/messages can wake an agent.
