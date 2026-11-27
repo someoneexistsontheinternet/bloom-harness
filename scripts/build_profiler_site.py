@@ -39,7 +39,7 @@ def build(trace, out):
     lanes = {}
     short_names = {"astra": "Astra", "company-catalysts": "Catalysts", "market-verifier": "Markets"}
     branch_names = {
-        name: f"{short_names.get(data.get('owner'), data.get('owner', 'Owner'))} · fork {i + 1}"
+        name: f"Fork {i + 1} · {short_names.get(data.get('owner'), data.get('owner', 'Owner'))}"
         for i, (name, data) in enumerate(branches.items())
     }
 
