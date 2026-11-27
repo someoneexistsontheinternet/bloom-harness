@@ -97,7 +97,7 @@ and postpones another attempt for three input turns; it does not park the agent.
 Terra continuations retain their request identity even when unrelated activity
 arrives for the same owner.
 
-Current verification: 43 offline tests pass, including executable CLI exchange,
+Current verification: 50 offline tests pass, including executable CLI exchange,
 exact fork seeds, cancellation, auth checks, sender preparation, superseding
 queued effects, crash recovery and explicit failed-request recovery. Live
 provider transport, native tools and sequential conversation reuse have now been
@@ -125,6 +125,32 @@ fork and agent-creation tools use this declaration; search, extraction and shell
 work share the other three slots. This is scheduling metadata, not API authority
 or a latency guarantee: message preparation can still await selected evidence.
 Existing frozen tool versions retain their original declarations.
+
+To inspect a completed run without starting the harness:
+
+```sh
+.venv/bin/python scripts/profile_run.py \
+  --workspace logs/TASK/RUN/workspace \
+  --run-directory logs/TASK/RUN \
+  --out artifacts/profiler/NEW_RUN \
+  --details
+```
+
+The exporter checks the read-only index against every journal original and writes
+an interactive operation timeline, a Chrome trace, an overlap-aware timing summary
+and explicit causal links. Optional detail files retain visible requests, responses
+and results while omitting native private reasoning and image bytes. These outputs
+can still contain task content; they are local diagnostics, not a public export.
+Original receipts and payloads are unchanged. Outputs must be outside the runtime
+workspace; use a fresh destination for each source run.
+
+Timings are elapsed receipt intervals, not sampled CPU time. Browser lease waiting
+is included in the service interval because it was not separately timed. Inbox
+waiting ends at the consuming turn's start. Supervisor `*-process.json` start/end
+receipts distinguish runner downtime when available; their absence does not imply
+an operator pause. Actor rows in the viewer are collapsible display groups and
+include idle gaps. The complete Chrome trace remains available independently of
+the inline view; the latter loads a pinned visualization component from its CDN.
 
 Run `.venv/bin/python scripts/check.py` for the offline checks. CI runs them on
 macOS (real sandbox) and Linux (explicit trusted-tools fixtures), then builds the
