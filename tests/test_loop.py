@@ -285,6 +285,28 @@ async def test_restart_reuses_completed_owner_response_before_dispatch(tmp_path,
     reopened.store.close()
 
 
+async def test_demo_terra_uses_latest_request_when_results_arrive_after_it():
+    from bloom41.demo import DemoProvider
+    from bloom41.models import final_text
+
+    def user(text):
+        return {"role": "user", "content": [{"type": "input_text", "text": text}]}
+
+    provider = DemoProvider()
+    request = {
+        "model": "gpt-6.1-terra",
+        "input": [
+            user("Gather only context useful to calculator"),
+            user("Monitor the latest turn of astra"),
+            {"type": "function_call_output", "call_id": "send", "output": "delivered"},
+            user("Routine tool result follows the monitoring request."),
+        ],
+    }
+    response, _ = await provider.generate(request)
+    assert "target: astra" in final_text(response)
+    assert "disposition: stage" in final_text(response)
+
+
 async def test_queued_action_checks_new_input_even_after_it_was_consumed(tmp_path):
     from bloom41.store import uid
 
