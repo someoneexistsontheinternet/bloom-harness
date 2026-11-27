@@ -9,6 +9,7 @@ import time
 
 import httpx
 
+from .admission import Admission
 from .store import encoded, uid
 from .tokens import count
 
@@ -177,7 +178,7 @@ class Models:
     def __init__(self, store, provider, *, concurrency=2):
         self.store = store
         self.provider = provider
-        self.slots = asyncio.Semaphore(concurrency)
+        self.slots = Admission(concurrency)
         self.inflight = {}
         simulated = bool(getattr(provider, "simulated", False))
         if not simulated and store.events("workspace.simulated"):
@@ -215,13 +216,23 @@ class Models:
             return None
         return sum(g["data"]["calls"] for g in grants) - len(self.store.events("model.started"))
 
-    async def call(self, actor, request, *, call_id, purpose="agent", profile=None, origin=None):
+    async def call(
+        self, actor, request, *, call_id, purpose="agent", profile=None, origin=None, priority=None
+    ):
+        if priority is None:
+            priority = 3 if purpose == "tool_reader" else 2 if profile == "terra" else 1
         async with self.inflight.setdefault(call_id, asyncio.Lock()):
             return await self._call(
-                actor, request, call_id=call_id, purpose=purpose, profile=profile, origin=origin
+                actor,
+                request,
+                call_id=call_id,
+                purpose=purpose,
+                profile=profile,
+                origin=origin,
+                priority=priority,
             )
 
-    async def _call(self, actor, request, *, call_id, purpose, profile, origin):
+    async def _call(self, actor, request, *, call_id, purpose, profile, origin, priority):
         body = self.provider.prepare(request) if hasattr(self.provider, "prepare") else request
         started = self.store.by_key("model-started:" + call_id)
         if started and (
@@ -238,7 +249,7 @@ class Models:
         estimate = count(encoded(visible(body)).decode())
         if estimate > 1_000_000 - 32768:
             raise ValueError("Request exceeds the configured 1M window; originals retained")
-        async with self.slots:
+        async with self.slots.slot(priority):
             allowance = self.allowance()
             if allowance is not None and allowance <= 0:
                 raise BudgetExceeded("No model call allowance remains")
@@ -252,6 +263,7 @@ class Models:
                     "purpose": purpose,
                     "profile": profile,
                     "origin": origin,
+                    "priority": priority,
                     "input_estimate": estimate,
                     "request": self.store.put(body),
                 },

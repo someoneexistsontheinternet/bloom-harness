@@ -146,6 +146,13 @@ work share the other three slots. This is scheduling metadata, not API authority
 or a latency guarantee: message preparation can still await selected evidence.
 Existing frozen tool versions retain their original declarations.
 
+Actor and model admission prioritize direct owner input, then runnable owners,
+forks and required context, then routine Terra activity and bulk readers. When no
+urgent request is first, every fourth admission serves the oldest waiting work.
+Model capacity remains two simultaneous requests and actor capacity remains four;
+priority does not interrupt an already accepted model request. Queue cancellation
+does not buy a request or leak its slot.
+
 To inspect a completed run without starting the harness:
 
 ```sh

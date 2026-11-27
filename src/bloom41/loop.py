@@ -8,6 +8,7 @@ from pathlib import Path
 import time
 
 from .agents import Actor, Agents, PROFILES, resource_directory
+from .admission import choose
 from .context import Context
 from .delivery import Delivery
 from .jobs import Jobs, TERMINAL
@@ -43,6 +44,7 @@ class Loop:
         self.heartbeat = heartbeat
         self.next_tick = 0
         self.active = {}
+        self.admissions = 0
         self.stopping = False
         self.output = output
 
@@ -54,6 +56,18 @@ class Loop:
     def turn(self, ident):
         row = self.store.latest("turn.state", ident)
         return row["data"] if row else None
+
+    @staticmethod
+    def priority(packages):
+        if any(p["sender"] == "user" or p["metadata"].get("urgent") for p in packages):
+            return 0
+        if packages and all(
+            p["kind"] == "activity"
+            or (p["metadata"].get("context_request") or {}).get("activity_only")
+            for p in packages
+        ):
+            return 2
+        return 1
 
     def turns(self, actor=None):
         latest = {}
@@ -573,6 +587,7 @@ class Loop:
                     "origin": origin,
                     "reply_to": default_target,
                     "context_request": request_context,
+                    "priority": self.priority(packages),
                 }
                 self.store.event(
                     "turn.received",
@@ -589,6 +604,10 @@ class Loop:
                     purpose="agent",
                     profile=self.agents.get(actor)["role"],
                     origin=turn["origin"],
+                    priority=turn.get(
+                        "priority",
+                        2 if (turn.get("context_request") or {}).get("activity_only") else 1,
+                    ),
                 )
                 text = final_text(response)
                 turn = self.save_turn(
@@ -792,8 +811,9 @@ class Loop:
                 if time.monotonic() >= self.next_tick:
                     self.request_contexts()
                     self.next_tick = time.monotonic() + self.heartbeat
-                for actor in self.scopes():
-                    if len(self.active) >= 4 or actor.scope in self.active:
+                candidates = []
+                for actor in self.scopes() if len(self.active) < 4 else []:
+                    if actor.scope in self.active:
                         continue
                     if self.actor_blocked(actor):
                         continue
@@ -815,17 +835,30 @@ class Loop:
                         (t for t in turns if t["status"] in ("prepared", "responded")), None
                     )
                     if unsettled:
-                        self.active[actor.scope] = asyncio.create_task(
-                            self.advance(actor, pending_turn=unsettled)
-                        )
+                        packages = [self.package(i) for i in unsettled["input_ids"]]
+                        candidates.append((actor, packages, unsettled))
                         continue
                     packages = self.ready(actor)
                     if packages and not self.turn(
                         "turn_" + digest(encoded([actor.scope, [p["id"] for p in packages]]))[:24]
                     ):
-                        self.active[actor.scope] = asyncio.create_task(
-                            self.advance(actor, packages)
-                        )
+                        candidates.append((actor, packages, None))
+                while candidates and len(self.active) < 4:
+                    candidate = choose(
+                        candidates,
+                        self.admissions,
+                        priority=lambda c: self.priority(c[1]),
+                        age=lambda c: min(
+                            (self.store.by_key("message-prepare:" + p["id"])["seq"] for p in c[1]),
+                            default=0,
+                        ),
+                    )
+                    candidates.remove(candidate)
+                    actor, packages, pending_turn = candidate
+                    self.active[actor.scope] = asyncio.create_task(
+                        self.advance(actor, packages, pending_turn)
+                    )
+                    self.admissions += 1
                 await self.jobs.pump()
                 if self.output:
                     for package in self.messages.pending("user"):
