@@ -166,9 +166,15 @@ or a latency guarantee: message preparation can still await selected evidence.
 Existing frozen tool versions retain their original declarations.
 
 Actor scheduling prioritizes direct owner input, then runnable owners, forks and
-required context, then routine Terra activity. When no urgent request is first,
-every fourth actor admission serves the oldest waiting work. Actor capacity remains
-four, separately from tool-process capacity.
+context, then routine Terra activity. All ready identities may start; each identity
+has at most one active turn. A completed empty response parks without an outgoing
+message. Later real input wakes it; no shell timer or polling purchase is needed.
+
+Model/browser API waits release the executor's local tool launch budget, including
+waits inside nested tools. This lets extraction and calculation launch while other
+tools await remote work. Local execution still has a four-worker launch budget
+with one reserved interactive place. External completions may overlap that budget;
+it is not a model concurrency limit or a hard total-process cap.
 
 Independent model API requests start without a global or per-profile concurrency
 slot limit. A lock applies only to duplicate callers using the same request ID.

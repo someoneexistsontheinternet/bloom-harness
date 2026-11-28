@@ -53,6 +53,7 @@ class Jobs:
         self.secret = (store.control / "master.key").read_bytes()
         self.lock = None
         self.connections = set()
+        self.external_waits = {}
         self.admit = None
 
     def get(self, job):
@@ -269,7 +270,23 @@ class Jobs:
         handler = self.handlers.get(action)
         if handler is None:
             raise PermissionError("API capability is not available: " + action)
-        return await handler(self.actor(job), job, arguments)
+        if action not in ("model", "service"):
+            return await handler(self.actor(job), job, arguments)
+        # Nested tools run inside their root executor. A remote wait releases
+        # that executor's local launch budget, without adding a model slot gate.
+        root = job
+        while root.get("parent"):
+            root = self.get(root["parent"])
+        ident = root["id"]
+        self.external_waits[ident] = self.external_waits.get(ident, 0) + 1
+        try:
+            return await handler(self.actor(job), job, arguments)
+        finally:
+            remaining = self.external_waits[ident] - 1
+            if remaining:
+                self.external_waits[ident] = remaining
+            else:
+                del self.external_waits[ident]
 
     def clean(self, value):
         # No await occurs during this walk. One snapshot covers every string in
@@ -454,7 +471,9 @@ class Jobs:
         for job in sorted(self.states(), key=lambda j: not j.get("interactive", False)):
             if job["status"] != "prepared" or job.get("parent"):
                 continue
-            executing = [self.get(ident) for ident in self.running]
+            executing = [
+                self.get(ident) for ident in self.running if not self.external_waits.get(ident)
+            ]
             occupied = sum(not j.get("waiting_on") for j in executing)
             if occupied >= self.limit:
                 break

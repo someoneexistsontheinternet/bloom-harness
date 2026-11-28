@@ -633,8 +633,8 @@ class Loop:
         response = self.store.json(turn["response"])
         text = self.store.read(turn["final"]).decode()
         calls = [i for i in response.get("output", []) if i.get("type") == "function_call"]
-        if not calls and not text.strip():
-            raise ValueError("Model returned neither a final message nor complete tool calls")
+        # A completed empty response parks this identity until real input arrives.
+        # It still consumes its exact inputs and preserves the native response.
         if len({c["call_id"] for c in calls}) != len(calls):
             raise ValueError("Duplicate native tool call IDs")
         definitions = {d["name"]: d for d in turn["tools"]}
@@ -729,7 +729,16 @@ class Loop:
                     {"request": request_id},
                     key="context-finished:" + request_id,
                 )
-        self.save_turn(turn, status="completed", superseded=stale)
+        if info and not calls and not text.strip():
+            self.store.event(
+                "context.finished",
+                info["context_for"],
+                {"request": info["request_id"]},
+                key="context-finished:" + info["request_id"],
+            )
+        self.save_turn(
+            turn, status="completed", superseded=stale, idle=not calls and not text.strip()
+        )
         if self.agents.get(actor)["role"] == "sol" and calls and not text.strip() and not stale:
             ident = "activity_" + digest(turn["id"].encode())[:24]
             info = {
@@ -807,14 +816,12 @@ class Loop:
                     self.request_contexts()
                     self.next_tick = time.monotonic() + self.heartbeat
                 candidates = []
-                for actor in self.scopes() if len(self.active) < 4 else []:
+                for actor in self.scopes():
                     if actor.scope in self.active:
                         continue
                     if self.actor_blocked(actor):
                         continue
                     turns = self.turns(actor)
-                    if any(t["status"] == "blocked" for t in turns):
-                        continue
                     for blocked_turn in turns:
                         if (
                             blocked_turn["status"] == "blocked"
@@ -826,6 +833,8 @@ class Loop:
                                 blocked_turn, status="prepared", error=None, budget=False
                             )
                     turns = self.turns(actor)
+                    if any(t["status"] == "blocked" for t in turns):
+                        continue
                     unsettled = next(
                         (t for t in turns if t["status"] in ("prepared", "responded")), None
                     )
@@ -838,7 +847,7 @@ class Loop:
                         "turn_" + digest(encoded([actor.scope, [p["id"] for p in packages]]))[:24]
                     ):
                         candidates.append((actor, packages, None))
-                while candidates and len(self.active) < 4:
+                while candidates:
                     candidate = choose(
                         candidates,
                         self.admissions,
