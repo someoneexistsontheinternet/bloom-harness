@@ -54,6 +54,7 @@ class Jobs:
         self.lock = None
         self.connections = set()
         self.external_waits = {}
+        self.pending_effects = {}
         self.admit = None
 
     def get(self, job):
@@ -178,8 +179,17 @@ class Jobs:
             token = self.token(job["id"])
             if not hmac.compare_digest(str(packet.get("token", "")), token):
                 raise PermissionError("Invalid execution credential")
-            if job["status"] not in ("running", "launching"):
+            closing = (
+                packet["action"] in ("finish", "finish_child")
+                and packet.get("arguments", {}).get("cancelled") is True
+            )
+            cancelling = self.cancellation_requested(job)
+            if job["status"] not in ("running", "launching") and not (closing and cancelling):
                 raise PermissionError("Execution credential is no longer active")
+            if cancelling and not closing:
+                raise PermissionError(
+                    "Cancellation requested; only terminal acknowledgement is allowed"
+                )
             value = await self.api(job, packet["action"], packet.get("arguments", {}))
             response = {"value": value}
         except asyncio.CancelledError:
@@ -197,6 +207,8 @@ class Jobs:
         try:
             writer.write(encoded(response) + b"\n")
             await writer.drain()
+        except (ConnectionError, BrokenPipeError):
+            pass  # Accepted work keeps its receipts even if the worker has stopped.
         finally:
             writer.close()
             with contextlib.suppress(Exception):
@@ -207,6 +219,10 @@ class Jobs:
         if action in ("finish", "finish_child"):
             if action == "finish_child" and not job.get("parent"):
                 raise PermissionError("Not a child invocation")
+            if arguments.get("cancelled") is True:
+                if not self.cancellation_requested(job):
+                    raise PermissionError("No cancellation intent exists")
+                return self.acknowledge_cancellation(job["id"])
             if "error" in arguments:
                 return self.state(job["id"], "failed", error=self.clean(arguments["error"]))
             value = self.clean(arguments.get("value"))
@@ -279,6 +295,7 @@ class Jobs:
             root = self.get(root["parent"])
         ident = root["id"]
         self.external_waits[ident] = self.external_waits.get(ident, 0) + 1
+        self.pending_effects[job["id"]] = self.pending_effects.get(job["id"], 0) + 1
         try:
             return await handler(self.actor(job), job, arguments)
         finally:
@@ -287,6 +304,88 @@ class Jobs:
                 self.external_waits[ident] = remaining
             else:
                 del self.external_waits[ident]
+            self.pending_effects[job["id"]] -= 1
+            if not self.pending_effects[job["id"]]:
+                del self.pending_effects[job["id"]]
+            self.reconcile_cancellations()
+
+    def cancellation_requested(self, job):
+        return bool(self.cancellation_reason(job))
+
+    def cancellation_reason(self, job):
+        while True:
+            current = self.get(job["id"])
+            if current.get("cancellation_reason"):
+                return current["cancellation_reason"]
+            if not current.get("parent"):
+                return None
+            job = self.get(current["parent"])
+
+    def effect_scope(self, job_id):
+        states = self.states()
+        owned = {job_id}
+        while True:
+            children = {j["id"] for j in states if j.get("parent") in owned}
+            if children <= owned:
+                break
+            owned.update(children)
+        return owned
+
+    def active_effects(self, job_id):
+        return any(self.pending_effects.get(ident) for ident in self.effect_scope(job_id))
+
+    def unsettled_effects(self, job_id):
+        owned = self.effect_scope(job_id)
+        if any(self.pending_effects.get(ident) for ident in owned):
+            return True
+        for row in self.store.events("reader.planned"):
+            if row["data"]["job"] not in owned:
+                continue
+            call = row["data"]["call"]
+            if self.store.by_key("model-started:" + call) and not self.store.by_key(
+                "model-completed:" + call
+            ):
+                failed = self.store.by_key("model-failed:" + call)
+                if not failed or failed["data"].get("uncertain", True):
+                    return True
+        for row in self.store.events("service.started"):
+            if row["data"]["job"] in owned and not self.store.by_key(
+                row["key"].removesuffix(":started") + ":completed"
+            ):
+                return True
+        return False
+
+    def acknowledge_cancellation(self, job_id, *, inherited=False):
+        job = self.get(job_id)
+        if job["status"] in ("completed", "failed", "cancelled"):
+            return job
+        uncertain = self.unsettled_effects(job_id)
+        reason = self.cancellation_reason(job) or "Cancellation requested"
+        return self.state(
+            job_id,
+            "uncertain" if uncertain else "cancelled",
+            cancellation_acknowledged=True,
+            inherited_cancellation_ack=inherited,
+            cancellation_reason=reason,
+            error="Worker stopped; accepted model/service work remains unsettled"
+            if uncertain
+            else reason,
+            reason="Acknowledged cancellation; prior effects are retained, never replayed",
+        )
+
+    def reconcile_cancellations(self):
+        for job in self.states():
+            if (
+                job["status"] == "uncertain"
+                and job.get("cancellation_acknowledged")
+                and not self.unsettled_effects(job["id"])
+            ):
+                self.state(
+                    job["id"],
+                    "cancelled",
+                    error=job.get("cancellation_reason"),
+                    reason="Acknowledged cancellation; accepted work now has terminal receipts",
+                )
 
     def clean(self, value):
         # No await occurs during this walk. One snapshot covers every string in
@@ -425,7 +524,7 @@ class Jobs:
         if job["status"] == "cancelling":
             self.state(
                 job_id,
-                "cancelled",
+                "uncertain" if self.unsettled_effects(job_id) else "cancelled",
                 error=job["cancellation_reason"],
                 reason="Owned process stopped",
                 exit_code=proc.returncode,
@@ -448,11 +547,14 @@ class Jobs:
             ]
             pending = {j["id"] for j in children}
             for child in children:
-                self.state(
-                    child["id"],
-                    "uncertain",
-                    error="Parent executor stopped before the child result receipt",
-                )
+                if job.get("cancellation_acknowledged"):
+                    self.acknowledge_cancellation(child["id"], inherited=True)
+                else:
+                    self.state(
+                        child["id"],
+                        "uncertain",
+                        error="Parent executor stopped before the child result receipt",
+                    )
 
     async def pump(self):
         for ident, (_, task) in list(self.running.items()):
@@ -464,10 +566,7 @@ class Jobs:
                 and time.time() - datetime.fromisoformat(self.get(ident)["launched_at"]).timestamp()
                 > self.timeout
             ):
-                await self.cancel(ident)
-                self.state(
-                    ident, "cancelled", error="Tool execution deadline expired", reason="deadline"
-                )
+                await self.cancel(ident, reason="Tool execution deadline expired")
         # Keep one of the existing slots available for short interactive tools.
         # The declaration comes from frozen tool source, not model arguments, and
         # changes scheduling only: it grants no additional API authority.

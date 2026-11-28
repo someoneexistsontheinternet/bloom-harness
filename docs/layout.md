@@ -65,6 +65,7 @@ scripts/                    maintained verification workflows
       work/                 writable work and source copies
         plan.md             task hierarchy, owners, dependencies and results
       scratch/              private drafts and temporary files
+      sources/<sha256>       read-only published originals and dependency sidecars
     branches/<id>/          independent files/history under the same owner
     shared/memory/          readable by owners; only continuous Astra approves edits
     jobs/<scope>/<job>/     frozen code, request, status and executor log

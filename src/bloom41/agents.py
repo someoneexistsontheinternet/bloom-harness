@@ -13,7 +13,7 @@ PROFILES = {
     "astra": {"model": "gpt-6-astra", "effort": "max", "window": 1_000_000},
     "sol": {"model": "gpt-6.1-sol", "effort": "xhigh", "window": 1_000_000},
     "terra": {"model": "gpt-6.1-terra", "effort": "medium", "window": 1_000_000},
-    "luna": {"model": "gpt-6-luna", "effort": "max", "window": 1_000_000},
+    "luna": {"model": "gpt-6-luna", "effort": "medium", "window": 1_000_000},
 }
 BASE_TOOLS = [
     "read_file",

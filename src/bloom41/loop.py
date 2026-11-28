@@ -4,6 +4,7 @@ import asyncio
 import base64
 import contextlib
 import json
+from datetime import datetime
 from pathlib import Path
 import time
 
@@ -15,11 +16,21 @@ from .jobs import Jobs, TERMINAL
 from .messages import Messages, addressed
 from .models import BudgetExceeded, ModelFailure, Models, final_text
 from .store import Store, atomic, digest, encoded, uid
+from .tool import file_media
 
 
 class Loop:
     def __init__(
-        self, root, provider, *, heartbeat=5.0, trusted_tools=False, services=None, output=None
+        self,
+        root,
+        provider,
+        *,
+        heartbeat=5.0,
+        trusted_tools=False,
+        services=None,
+        output=None,
+        activity_batch=3,
+        activity_delay=30.0,
     ):
         self.store = Store(root)
         self.agents = Agents(self.store)
@@ -27,6 +38,7 @@ class Loop:
         self.context = Context(self.store)
         self.messages = Messages(self.store)
         self.models = Models(self.store, provider)
+        self.reader_locks = {}
         self.jobs = Jobs(self.store, trusted_tools=trusted_tools)
         self.jobs.admit = self.admit_job
         self.delivery = Delivery(self.store, self.jobs)
@@ -47,6 +59,8 @@ class Loop:
         self.admissions = 0
         self.stopping = False
         self.output = output
+        self.activity_batch = activity_batch
+        self.activity_delay = activity_delay
 
     def scopes(self):
         return [Actor(a["id"]) for a in self.agents.all()] + [
@@ -88,7 +102,7 @@ class Loop:
         profile = PROFILES[role]
         request = args["request"]
         parts = (
-            request
+            [dict(p) for p in request]
             if isinstance(request, list)
             else [
                 {
@@ -110,15 +124,15 @@ class Loop:
         for name in args.get("sources", []):
             path = self.delivery.path(actor, name)
             data = path.read_bytes()
-            media = {
-                ".png": "image/png",
-                ".jpg": "image/jpeg",
-                ".jpeg": "image/jpeg",
-                ".webp": "image/webp",
-                ".gif": "image/gif",
-            }.get(path.suffix.lower())
-            if media:
-                parts.append({"type": "input_text", "text": "Native image source: " + str(path)})
+            media = file_media(path)
+            source = self.store.put(data, media)
+            if media.startswith("image/"):
+                parts.append(
+                    {
+                        "type": "input_text",
+                        "text": "Native image source: source:" + source["sha256"],
+                    }
+                )
                 parts.append(
                     {
                         "type": "input_image",
@@ -128,9 +142,7 @@ class Loop:
                 )
             else:
                 parts.append({"type": "input_text", "text": data.decode()})
-            sources.append(
-                {"path": str(path), "source": self.store.put(data, media or "text/plain")}
-            )
+            sources.append({"path": str(path), "source": source})
         call_id = "reader_" + digest(encoded([job["id"], args["ordinal"]]))[:24]
         turn = self.turn(job["turn"]) if job.get("turn") else None
         body = {
@@ -143,21 +155,58 @@ class Loop:
             "reasoning": {"effort": profile["effort"]},
             "include": ["reasoning.encrypted_content"],
         }
-        result = await self.models.call(
-            actor,
-            body,
-            call_id=call_id,
-            purpose="tool_reader",
-            profile=role,
-            origin=(turn or {}).get("origin"),
+        prepared = (
+            self.models.provider.prepare(body) if hasattr(self.models.provider, "prepare") else body
         )
-        self.store.event(
-            "reader.sources",
-            actor.scope,
-            {"call": call_id, "sources": sources, "job": job["id"]},
-            key="reader-sources:" + call_id,
-        )
-        return {"text": final_text(result), "call_id": call_id, "sources": sources}
+        fingerprint = digest(encoded([actor.agent, role, prepared]))
+        # This lock deduplicates identical pure reads only; independent sources
+        # and all ordinary agent turns remain unconstrained by model slots.
+        async with self.reader_locks.setdefault(fingerprint, asyncio.Lock()):
+            plan = self.store.latest("reader.planned", fingerprint)
+            if not plan or (
+                plan["data"]["call"] != call_id
+                and not self.store.by_key("model-started:" + plan["data"]["call"])
+            ):
+                prior = self.store.by_key("model-started:" + call_id)
+                if prior and self.store.json(prior["data"]["request"]) != prepared:
+                    raise ValueError("Reader ordinal reused with different input")
+                plan = self.store.event(
+                    "reader.planned",
+                    fingerprint,
+                    {
+                        "call": call_id,
+                        "job": job["id"],
+                        "agent": actor.agent,
+                        "branch": actor.branch,
+                        "origin": (turn or {}).get("origin"),
+                        "request": self.store.put(body),
+                        "sources": sources,
+                    },
+                    key="reader-plan:" + call_id,
+                )
+            physical = plan["data"]
+            result = await self.models.call(
+                Actor(physical["agent"], physical["branch"]),
+                self.store.json(physical["request"]),
+                call_id=physical["call"],
+                purpose="tool_reader",
+                profile=role,
+                origin=physical["origin"],
+            )
+            self.store.event(
+                "reader.sources",
+                Actor(physical["agent"], physical["branch"]).scope,
+                {"call": physical["call"], "sources": physical["sources"], "job": physical["job"]},
+                key="reader-sources:" + physical["call"],
+            )
+            if call_id != physical["call"]:
+                self.store.event(
+                    "reader.reused",
+                    actor.scope,
+                    {"call": physical["call"], "job": job["id"], "logical_call": call_id},
+                    key="reader-reused:" + call_id,
+                )
+            return {"text": final_text(result), "call_id": physical["call"], "sources": sources}
 
     async def service_api(self, actor, job, args):
         service = self.services.get(args["name"])
@@ -274,15 +323,41 @@ class Loop:
 
             # Required context/continuations precede optional activity. Routine
             # turns for one work scope can share a monitoring decision.
-            first = next((p for p in pending if p["kind"] != "activity"), pending[0])
+            first = next(
+                (p for p in pending if p["kind"] != "activity" or p["metadata"].get("attention")),
+                pending[0],
+            )
             selected = destination(first)
             if first["kind"] == "activity":
-                return [
+                batch = [
                     p
                     for p in pending
                     if p["kind"] == "activity" and destination(p)[0] == selected[0]
                 ]
-            return [p for p in pending if destination(p) == selected]
+                oldest = min(
+                    datetime.fromisoformat(
+                        self.store.by_key("message-prepare:" + p["id"])["at"]
+                    ).timestamp()
+                    for p in batch
+                )
+                if (
+                    not any(
+                        p["metadata"].get("attention") or p["metadata"].get("urgent") for p in batch
+                    )
+                    and len(batch) < self.activity_batch
+                    and time.time() - oldest < self.activity_delay
+                ):
+                    return []
+                return batch
+            primary = [p for p in pending if destination(p) == selected]
+            return primary + [
+                p
+                for p in pending
+                if p not in primary
+                and first["kind"] == "context_request"
+                and p["kind"] == "activity"
+                and destination(p)[0] == selected[0]
+            ]
         contexts = [
             p
             for p in pending
@@ -411,6 +486,14 @@ class Loop:
                 or self.store.by_key("job-notified:" + job["id"])
             ):
                 continue
+            if (
+                job.get("cancellation_acknowledged")
+                and job["status"] == "uncertain"
+                and self.jobs.active_effects(job["id"])
+            ):
+                # A stopped worker can still have an accepted broker request.
+                # Its settlement, rather than a polling decision, determines the return.
+                continue
             value = (
                 self.store.json(job["result"])
                 if job.get("result")
@@ -450,6 +533,36 @@ class Loop:
                         "context_request": (source_turn or {}).get("context_request"),
                     },
                 )
+                if job["status"] in ("failed", "uncertain") and self.agents.get(actor)["role"] in (
+                    "astra",
+                    "sol",
+                ):
+                    ident = "failure_" + digest(job["id"].encode())[:24]
+                    self.messages.deliver(
+                        "system",
+                        "terra-" + actor.agent,
+                        "A tool failed or has an uncertain effect. Inspect these recorded facts only as needed; do not perform the owner's task. "
+                        + json.dumps(
+                            {
+                                "job": job["id"],
+                                "tool": job["name"],
+                                "status": job["status"],
+                                "error": job.get("error"),
+                            }
+                        ),
+                        message_id=ident,
+                        kind="activity",
+                        metadata={
+                            "attention": "failure",
+                            "context_request": {
+                                "context_for": actor.scope,
+                                "request_id": ident,
+                                "original_ids": [],
+                                "origin": (source_turn or {}).get("origin"),
+                                "activity_only": True,
+                            },
+                        },
+                    )
             self.store.event(
                 "job.notified", job["id"], {"woke": bool(wake)}, key="job-notified:" + job["id"]
             )
@@ -741,6 +854,15 @@ class Loop:
                 }
                 for call in calls
             ]
+            plan_changed = False
+            for call in calls:
+                if call["name"] == "edit_file":
+                    try:
+                        plan_changed |= (
+                            Path(json.loads(call["arguments"]).get("path", "")).name == "plan.md"
+                        )
+                    except (ValueError, TypeError):
+                        pass
             origin = self.store.by_key("message-prepare:" + turn["origin"])
             activity = {
                 "turn": turn["id"],
@@ -781,12 +903,17 @@ class Loop:
                 attachments=records,
                 kind="activity",
                 reply_to=actor.scope,
-                metadata={"context_request": info, "origin": turn["origin"]},
+                metadata={
+                    "context_request": info,
+                    "origin": turn["origin"],
+                    **({"attention": "plan_changed"} if plan_changed else {}),
+                },
             )
 
     async def run(self, *, watch=False, seconds=None):
         await self.jobs.start()
         self.models.recover()
+        self.jobs.reconcile_cancellations()
         self.messages.recover()
         began = time.monotonic()
         try:
@@ -857,13 +984,21 @@ class Loop:
                             self.store.event(
                                 "channel.delivered", package["id"], {"channel": "cli"}, key=key
                             )
-                runnable_jobs = any(
+                runnable_jobs = bool(self.jobs.pending_effects) or any(
                     j["status"] in ("running", "launching", "cancelling")
                     or j["status"] == "prepared"
                     and self.admit_job(j) is not None
                     for j in self.jobs.states()
                 )
-                pending_inboxes = any(self.messages.pending(a) for a in self.scopes())
+                pending_inboxes = any(
+                    any(
+                        p["kind"] != "activity"
+                        or p["metadata"].get("attention")
+                        or p["metadata"].get("urgent")
+                        for p in self.messages.pending(a)
+                    )
+                    for a in self.scopes()
+                )
                 blocked = any(t["status"] == "blocked" for t in self.turns()) or any(
                     self.actor_blocked(a) for a in self.scopes()
                 )

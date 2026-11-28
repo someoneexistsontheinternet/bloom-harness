@@ -191,6 +191,8 @@ async def test_same_identity_fork_uses_exact_seed_and_returns_isolated_work(tmp_
                         ),
                         final("---\ntarget: worker\n---\nThe branch checked the original source."),
                     ]
+            elif "The branch result and original evidence were joined." in raw:
+                output = []
             elif "The branch checked the original source." in raw:
                 assert "private branch result" in raw
                 output = [
@@ -198,6 +200,9 @@ async def test_same_identity_fork_uses_exact_seed_and_returns_isolated_work(tmp_
                         "---\ntarget: user\n---\nThe branch result and original evidence were joined."
                     )
                 ]
+            elif "split" in calls:
+                # The creation handle returns before the branch's evidence.
+                output = []
             else:
                 output = [
                     call(
@@ -440,7 +445,7 @@ async def test_shutdown_records_terminal_receipts_for_tool_model_consultations(t
 
 
 def test_terra_does_not_merge_distinct_context_continuations_for_the_same_owner(tmp_path):
-    loop = Loop(tmp_path, Conversation())
+    loop = Loop(tmp_path, Conversation(), activity_delay=0)
     terra = Actor("terra-astra")
     continuation = {
         "context_for": "astra",

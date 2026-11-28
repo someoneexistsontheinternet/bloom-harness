@@ -9,6 +9,54 @@ from bloom41.tokens import count
 from test_models_context import Scripted
 
 
+def activity(loop, ident, attention=None):
+    loop.messages.deliver(
+        "system",
+        "terra-astra",
+        "Recorded operations",
+        message_id=ident,
+        kind="activity",
+        metadata={
+            "attention": attention,
+            "context_request": {
+                "context_for": "astra",
+                "request_id": ident,
+                "original_ids": [],
+                "activity_only": True,
+            },
+        },
+    )
+
+
+async def test_routine_activity_waits_for_batch_or_age_and_does_not_keep_idle_runner_busy(tmp_path):
+    provider = Scripted()
+    loop = Loop(tmp_path, provider, activity_batch=3, activity_delay=30, heartbeat=0.01)
+    terra = Actor("terra-astra")
+    activity(loop, "one")
+    assert not loop.ready(terra)
+    await loop.run(seconds=0.1)
+    assert not provider.requests
+    assert len(loop.messages.pending(terra)) == 1
+    activity(loop, "two")
+    assert not loop.ready(terra)
+    activity(loop, "three")
+    assert len(loop.ready(terra)) == 3
+    loop.messages.file(loop.messages.pending(terra), "fixture batch consumed")
+    activity(loop, "aged")
+    loop.activity_delay = 0
+    assert [p["id"] for p in loop.ready(terra)] == ["aged"]
+    loop.store.close()
+
+
+def test_material_attention_flushes_routine_facts_without_waiting(tmp_path):
+    loop = Loop(tmp_path, Scripted())
+    activity(loop, "ordinary")
+    assert not loop.ready(Actor("terra-astra"))
+    activity(loop, "failure", "failure")
+    assert {p["id"] for p in loop.ready(Actor("terra-astra"))} == {"ordinary", "failure"}
+    loop.store.close()
+
+
 def result(loop, ident="result"):
     loop.messages.deliver(
         "tool:read_file", "astra", "The requested result", message_id=ident, kind="tool_result"
@@ -177,7 +225,7 @@ def test_context_attachments_stay_retrievable_without_duplicating_them_in_terra_
 
 
 def test_activity_batches_within_one_work_scope_and_required_context_goes_first(tmp_path):
-    loop = Loop(tmp_path, Scripted())
+    loop = Loop(tmp_path, Scripted(), activity_batch=2)
     terra = Actor("terra-astra")
     for ident, target in [("first", "astra"), ("second", "astra"), ("branch", "a-branch")]:
         loop.messages.deliver(
@@ -203,7 +251,8 @@ def test_activity_batches_within_one_work_scope_and_required_context_goes_first(
         kind="context_request",
         metadata={"context_for": "astra", "request_id": "required"},
     )
-    assert [p["id"] for p in loop.ready(terra)] == ["required"]
+    assert [p["id"] for p in loop.ready(terra)] == ["required", "first", "second"]
+    assert loop.context.episode(loop.ready(terra)) == "required"
     loop.store.close()
 
 

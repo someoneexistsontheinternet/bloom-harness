@@ -26,9 +26,9 @@ authority and atomically publishes one complete package. Recipient Terra may
 gather its own extra context; it does not assemble evidence on the sender's behalf.
 Missing requested evidence is explicit. Sending does not terminate a persistent
 agent, wait for the recipient's answer, or impose report-quality acceptance gates.
-Preparation may carry an explicit evidence question before the final-field body
-exists. Without either, large additions stay references and the receipt states
-that no extraction ran. Explicit reference attachments do not buy another read.
+Preparation can invoke an explicit extract tool with its actual question before
+the final-field body exists. File reads and plain attachments perform no inference;
+large additions remain readable references. A question alone never triggers a reader.
 A failed extraction retains the original and adds its limitation to the package.
 The exact final-field body remains the only outgoing message content.
 
@@ -90,8 +90,20 @@ Bundled tools: read_file, edit_file, bash, find, search, extract, fork_self,
 send_message, create_agent (Astra only), cancel_job. Safari search preserves the
 v3 native helper, ordinary signed-in task-owned window, full parsed document and
 native image capture. Luna sees useful source context and extracts exact evidence.
+Each usable source is read independently, with concurrent 32k-token windows for
+long text. Validated source ranges supply the quotes; model summaries account for
+the omitted prefix, gaps and suffix. Missing summaries/windows are explicit, and
+full originals/native images remain available. Identical reads within an owner
+reuse durable purchases; uncertain accepted requests are never repurchased.
 Sources, coverage, omissions and failures remain retrievable. Search/extraction
 and sender preparation are tool workflows, not hardcoded scheduler purposes.
+
+Published source IDs name immutable bytes. Authorized sender preparation copies
+them and declared supporting sources to the recipient's read-only sources/ view
+before delivery. The exact final message remains unchanged. Owners may read their
+own fork outputs; unrelated private directories remain denied. Routine Terra
+activity waits for three turns or 30 seconds unless a plan change/failure needs
+attention. New context requests can absorb pending activity without an extra pass.
 
 ## Acceptance
 

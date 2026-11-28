@@ -96,8 +96,8 @@ async def test_overlapping_requests_do_not_overspend_the_call_allowance(tmp_path
         store.close()
 
 
-async def test_ready_owner_enters_actor_slots_ahead_of_older_optional_monitors(tmp_path):
-    loop = Loop(tmp_path, Scripted(), heartbeat=0.01)
+async def test_ready_owner_runs_ahead_of_ready_older_optional_monitors(tmp_path):
+    loop = Loop(tmp_path, Scripted(), heartbeat=0.01, activity_delay=0)
     for n in range(5):
         name = f"worker-{n}"
         loop.agents.create(name, "sol", "Independent responsibility", principal=Actor("astra"))

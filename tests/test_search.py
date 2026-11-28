@@ -84,47 +84,36 @@ class Reviewer(Scripted):
             and "RAW_HEADING_SENTINEL" not in text
         )
         content = request["input"][0]["content"]
-        if "Review ALL" in content[0]["text"]:
-            packet = json.loads(content[1]["text"])
-            docs = packet["documents"]
-            assert len(docs) == 20
-            assert len(docs[0]["text"]) > 50_000
-            assert docs[19]["status"] == "capture_failed"
-            assert len([p for p in content if p["type"] == "input_image"]) == 19
-            review = {
-                "selected": [d["id"] for d in docs[:3]],
-                "visual": [docs[1]["id"]],
-                "sources": [
-                    {
-                        "id": d["id"],
-                        "summary": "capture failed"
-                        if d["status"] == "capture_failed"
-                        else "reviewed source",
-                        "reason": "relevance decision",
-                        "visual_reason": "only source one adds a chart",
-                    }
-                    for d in docs
-                ],
-                "coverage": "Whole text and native screenshot strips; more content below.",
-                "limitations": ["One page blocked"],
-                "insufficient_relevant_sources": False,
-            }
-            return reply(json.dumps(review)), []
-        # Exact numbered extraction for the large selected source, after review.
-        assert "source zero" in text
+        packet = json.loads(content[1]["text"])
+        number = int(packet["context"]["title"].split()[-1])
+        assert len([p for p in content if p["type"] == "input_image"]) == 1
+        assert request["reasoning"]["effort"] == "medium"
+        relevant = number < 3
+        first, last = packet["first_line"], packet["last_line"]
+        summaries = []
+        if not relevant:
+            summaries = [
+                {"start_line": first, "end_line": last, "summary": "Unrelated source material"}
+            ]
+        elif first < last:
+            summaries = [
+                {
+                    "start_line": first + 1,
+                    "end_line": last,
+                    "summary": "Remaining context and repeated evidence",
+                }
+            ]
         return reply(
             json.dumps(
                 {
-                    "relevant": True,
-                    "summary": "Evidence selected from the full source",
-                    "passages": [
-                        {
-                            "start_line": 1,
-                            "end_line": 1,
-                            "above_summary": "Beginning of the source",
-                            "below_summary": "The document repeats this evidence",
-                        }
-                    ],
+                    "relevant": relevant,
+                    "priority": 3 - number if relevant else 0,
+                    "summary": f"Source {number} assessed for the actual question",
+                    "passages": [{"start_line": first, "end_line": first}] if relevant else [],
+                    "summaries": summaries,
+                    "visual_relevant": number == 1,
+                    "visual_reason": "Only source one adds a chart",
+                    "limitations": [],
                 }
             )
         ), []
@@ -133,7 +122,7 @@ class Reviewer(Scripted):
 async def test_search_captures_twenty_reviews_native_images_and_curates_large_selection(tmp_path):
     provider = Reviewer()
     loop = Loop(tmp_path, provider, trusted_tools=sys.platform != "darwin")
-    loop.models.grant(4)
+    loop.models.grant(25)
     browser_workspace = tmp_path / "existing-granted-helper/workspace"
 
     class ExistingHelper(Captures):
@@ -155,7 +144,7 @@ async def test_search_captures_twenty_reviews_native_images_and_curates_large_se
         large = result["selected"][0]
         assert "text" not in large and "evidence" in large, large
         assert large["evidence"]["passages"][0]["text"] == "evidence from source zero"
-        assert result["files"] and len(provider.requests) == 2
+        assert result["files"] and len(provider.requests) == 19
         # A later user-facing tool result embeds selected native bytes and no full large text.
         await loop.notify_jobs()
         package = loop.messages.pending(Actor("astra"))[0]

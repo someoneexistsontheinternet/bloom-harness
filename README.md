@@ -21,7 +21,10 @@ additions can arrive later. Preparations accepted by older runners retain their
 recorded handoff semantics during recovery.
 
 Terra receives activity facts and retrievable original call records, and batches
-pending routine activity for one work scope. Required context and tool
+routine activity for one work scope (three turns or 30 seconds). Plan changes,
+failures and real instructions bypass the delay; a context request can absorb
+pending facts. A non-watching runner may exit with only deferred routine activity
+left, retaining it for later work. Required context and tool
 continuations take precedence. Its working view keeps at most eight prior notes
 of 512 tokens each, plus an older approved memo if present and the current
 request's exact native history. That prefix stays frozen across asynchronous
@@ -113,10 +116,22 @@ Elsewhere, arbitrary scripts require explicit `--trusted-tools`; there is no
 claim of OS isolation in that mode. This is tested filesystem/API isolation,
 not comprehensive protection against every OS exploit.
 
-Safari search is connected through a scoped browser service. `search.py` owns the
-20-candidate whole-document/native-image review and subsequent numbered extraction
-of selected text over 50k characters. Saved originals and capture failures remain
-available. The separate **Bloom v4.1 Browser Helper** does not replace v3's helper.
+Safari search is connected through a scoped browser service. `search.py` captures
+up to 20 candidates and calls the explicit reader independently for each usable
+source, including its native images. It selects up to seven relevant distinct
+sources and forwards at most two visual sources inline. Saved originals and
+capture failures remain available. The separate **Bloom v4.1 Browser Helper** does
+not replace v3's helper.
+
+`extract(path, question, ...)` reads the requested source/range in independent
+32k-token windows at Luna's medium effort. It returns host-validated verbatim
+excerpts and ordered summaries of omitted text above, between and below them.
+Uncovered ranges and failed windows are explicit; the reader never substitutes a
+summary for an exact file read. Native images accompany the first text window,
+with that comparison scope recorded. Identical completed reader requests within
+one owner (including its forks) reuse their original receipt; independent sources
+remain concurrent. An uncertain accepted purchase is never automatically repeated.
+Search results and message forwarding do not commission another generic reader.
 
 ```sh
 .venv/bin/bloom41 --root YOUR_WORKSPACE browser prepare
@@ -173,8 +188,7 @@ post-answer response blocked Astra, and 2m11s of AVGO's elapsed time belongs to
 that recovery. The earlier FRMI run also included about ten minutes of operator
 downtime. These runs demonstrate reduced model traffic, not a clean uninterrupted
 pass or an established latency improvement. That recording predates the actor/wait
-changes, supplemental context and accepted empty turns. Per-source Luna reading
-remains a separate workstream.
+changes, supplemental context, accepted empty turns and the current per-source reader.
 Background work was stopped after both answers; unstarted jobs
 remain retained without replay.
 
@@ -195,8 +209,9 @@ attachment directory; models requested copied evidence and further preparation.
 Two model-requested search cancellations left one nested
 reader job explicitly uncertain; no effects were replayed. Luna ran 30 requests
 and was active during 36m51s (71% of the answer interval, overlapping other work).
-Remaining gaps include parent continuation after single-call fork creation,
-usable forwarded evidence references, and repeated curation of large source files.
+That recording predates the current fork continuation, published evidence
+references and explicit per-source reader changes; it does not measure their
+effect on end-to-end latency.
 
 A user-inbox answer does not terminate other agents' outstanding work. `run` may
 therefore reach its allowance and exit with status 2 after delivering an answer;
@@ -298,3 +313,7 @@ Fork creation now returns a completion result to its parent, so one native fork
 call can be followed by more planning without waiting for the child report.
 Journal appends index only the new event after the original is durable; complete
 scans remain for external changes and recovery. File/directory fsync is retained.
+Workers acknowledge graceful cancellation, including nested invocations. Accepted
+model/service work keeps an uncertain job receipt until it settles; a late terminal
+receipt can reconcile acknowledged cancellation. Unacknowledged child shutdowns
+and uncertain external effects remain explicit.

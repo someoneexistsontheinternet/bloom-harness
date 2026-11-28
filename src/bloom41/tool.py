@@ -134,6 +134,26 @@ async def execute(path, tool, args):
     return await value if inspect.isawaitable(value) else value
 
 
+def file_media(path):
+    path = Path(path)
+    metadata = path.with_name(path.name + ".json")
+    if (
+        path.parent.name == "sources"
+        and re.fullmatch(r"[a-f0-9]{64}", path.name)
+        and metadata.is_file()
+    ):
+        return json.loads(metadata.read_bytes())["media"]
+    return {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".json": "application/json",
+        ".pdf": "application/pdf",
+    }.get(path.suffix.lower(), "text/plain")
+
+
 def resolve_path(root, value, *, read_roots=(), shared=None, memory=None, write=False):
     """Resolve agent paths and legacy inbox references using explicit source grants."""
     root = Path(root).resolve()
@@ -230,22 +250,7 @@ class Tool:
         )
 
     def media(self, value):
-        path = self.path(value)
-        metadata = path.with_name(path.name + ".json")
-        if (
-            path.parent.name == "sources"
-            and re.fullmatch(r"[a-f0-9]{64}", path.name)
-            and metadata.is_file()
-        ):
-            return json.loads(metadata.read_bytes())["media"]
-        return {
-            ".png": "image/png",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".gif": "image/gif",
-            ".webp": "image/webp",
-            ".json": "application/json",
-        }.get(path.suffix.lower(), "text/plain")
+        return file_media(self.path(value))
 
     async def request(self, action, **arguments):
         reader, writer = await asyncio.open_connection(
@@ -294,6 +299,12 @@ class Tool:
             value = await execute(child["script"], nested, arguments)
             await nested.request("finish_child", value=value)
             return value
+        except asyncio.CancelledError:
+            try:
+                await nested.request("finish_child", cancelled=True)
+            except Exception:
+                pass
+            raise
         except Exception as exc:
             await nested.request("finish_child", error=type(exc).__name__ + ": " + str(exc))
             raise

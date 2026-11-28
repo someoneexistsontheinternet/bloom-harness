@@ -3,6 +3,7 @@ import sys
 
 from bloom41.agents import Actor, Agents
 from bloom41.evidence import NumberedSource
+from bloom41.delivery import Delivery
 from bloom41.jobs import Jobs
 from bloom41.store import Store
 from test_delivery import done
@@ -41,12 +42,14 @@ async def test_standalone_extract_reads_exact_source_through_scoped_model_api(tm
                     "relevant": True,
                     "summary": "Conditional agreement, no received payment.",
                     "passages": [{"start_line": 2, "end_line": 3}],
+                    "summaries": [{"start_line": 1, "end_line": 1, "summary": "Document heading"}],
                 }
             ),
             "call_id": "fixture-luna",
         }
 
     jobs = Jobs(store, {"model": model}, trusted_tools=sys.platform != "darwin")
+    jobs.handlers.update(Delivery(store, jobs).handlers())
     await jobs.start()
     try:
         job = jobs.submit(
