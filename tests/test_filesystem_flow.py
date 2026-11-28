@@ -89,6 +89,9 @@ def test_legacy_paths_are_unambiguous_read_only_and_confined_to_ancestor_grants(
     parent = branch(loop, "parent")
     child = branch(loop, "child", parent)
     sibling = branch(loop, "sibling")
+    assert loop.agents.path(child) in loop.agents.read_roots(Actor("astra"))
+    loop.agents.create("unrelated", "sol", "Separate owner", principal=Actor("astra"))
+    assert loop.agents.path(child) not in loop.agents.read_roots(Actor("unrelated"))
     legacy = Path("inbox/source/attachments/evidence.txt")
     source = loop.agents.path("astra") / legacy
     source.parent.mkdir(parents=True)

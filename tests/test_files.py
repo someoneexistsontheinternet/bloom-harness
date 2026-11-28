@@ -85,3 +85,39 @@ def test_identity_authority_and_branch_ownership(tmp_path):
     assert agents.get(branch)["id"] == "astra"
     assert addressed("---\ntarget: astra\n---\nhello")[0] == "astra"
     store.close()
+
+
+def test_append_indexes_only_new_event_and_recovers_a_failed_index_commit(tmp_path, monkeypatch):
+    store = Store(tmp_path)
+    original = Path.glob
+    scans = []
+
+    def glob(path, pattern, *args, **kwargs):
+        if path == store.journal:
+            scans.append(pattern)
+        return original(path, pattern, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "glob", glob)
+    for n in range(64):
+        store.event("fixture", "owner", {"n": n}, key=str(n))
+    assert not scans
+    index = store._index
+
+    def fail(*args):
+        raise RuntimeError("index transaction interrupted")
+
+    monkeypatch.setattr(store, "_index", fail)
+    with pytest.raises(RuntimeError):
+        store.event("fixture", "owner", {"n": 64}, key="64")
+    monkeypatch.setattr(store, "_index", index)
+    assert store.event("fixture", "owner", {"n": 64}, key="64")["data"] == {"n": 64}
+    assert len(scans) == 1 and len(store.events()) == 65
+    # A second writer shares the lock/index but changes this instance's stamp.
+    other = Store(tmp_path)
+    other.event("fixture", "peer", {}, key="peer")
+    before = len(scans)
+    store.event("fixture", "owner", {}, key="after-peer")
+    assert len(scans) == before + 1
+    assert store.by_key("peer")
+    other.close()
+    store.close()

@@ -35,6 +35,9 @@ latest user corrections over inherited v3/v4 assumptions.
   has private work/scratch and read-only access to its owner's filesystem memory.
 - Model API calls have no harness concurrency-slot limit. Preserve per-request
   deduplication, durable purchase intents and the explicit total call allowance.
+- Keep ordinary file reads, command output and message transfer free of hidden
+  inference. Only explicit research tools commission readers. Published source
+  IDs preserve evidence identity and recipient access; final text stays exact.
 - Return terminal tool results directly to their owner; do not buy a Terra pass
   for each result. New instructions must not be skipped while processing results.
 - Keep native histories and 1M configured capacity. Persistent owners approve

@@ -8,6 +8,46 @@ from bloom41.agents import Actor
 from bloom41.demo import DemoProvider, evidence
 from bloom41.loop import Loop
 from test_loop import call, final
+from test_delivery import done
+from test_models_context import Scripted
+
+
+async def test_single_fork_completion_wakes_parent_before_any_branch_report(tmp_path):
+    provider = Scripted(
+        {"status": "completed", "output": [call("fork_self", {"question": "ALPHA"}, "fork")]}
+    )
+    loop = Loop(tmp_path, provider, trusted_tools=sys.platform != "darwin")
+    owner = Actor("researcher")
+    loop.agents.create(owner.agent, "sol", "Own the investigation", principal=Actor("astra"))
+    loop.models.grant(2)
+    loop.messages.deliver(
+        "astra", owner.scope, "Check two independent parts", message_id="assignment"
+    )
+    await loop.jobs.start()
+    try:
+        for question in ("ALPHA", "BETA"):
+            provider.result = {
+                "status": "completed",
+                "output": [call("fork_self", {"question": question}, "fork")],
+            }
+            await loop.advance(owner, loop.ready(owner))
+            job = [j for j in loop.jobs.states() if j["name"] == "fork_self"][-1]
+            assert (await done(loop.jobs, job["id"]))["status"] == "completed"
+            await loop.notify_jobs()
+            ready = loop.ready(owner)
+            assert ready and all(p["kind"] == "tool_result" for p in ready)
+            result = loop.store.json(ready[0]["attachments"][0]["source"])
+            assert result["owner"] == owner.agent and result["branch"].startswith("branch_")
+        assert len(loop.store.events("branch.created")) == 2
+        assert len(loop.store.events("model.started")) == 2
+        assert not [
+            r
+            for r in loop.store.events("message.prepared")
+            if r["data"]["sender"].startswith("branch_")
+        ]
+    finally:
+        await loop.jobs.close()
+        loop.store.close()
 
 
 async def test_lead_progresses_while_a_fork_runs_then_joins_both_under_one_identity(tmp_path):
@@ -67,7 +107,10 @@ async def test_lead_progresses_while_a_fork_runs_then_joins_both_under_one_ident
                             "work",
                         ),
                     ]
-                elif parent_turns == 2:
+                elif not overlap and any(
+                    isinstance(v, dict) and v.get("stdout") == "parent evidence"
+                    for v in evidence(request)
+                ):
                     await asyncio.wait_for(alpha_started.wait(), 6)
                     assert any(
                         isinstance(v, dict) and v.get("stdout") == "parent evidence"
@@ -88,14 +131,17 @@ async def test_lead_progresses_while_a_fork_runs_then_joins_both_under_one_ident
                         ):
                             await asyncio.sleep(0.001)
                     output = [call("finish_independent", {}, "independent")]
-                else:
-                    assert "ALPHA verified independently." in raw
-                    assert "BETA verified independently." in raw
+                elif (
+                    "ALPHA verified independently." in raw and "BETA verified independently." in raw
+                ):
                     output = [
                         final(
                             "---\ntarget: astra\n---\nJoined ALPHA and BETA with the parent evidence."
                         )
                     ]
+                else:
+                    # Creation handles can arrive before the independent command.
+                    output = []
             return {"status": "completed", "output": output}, []
 
     loop = Loop(tmp_path, Provider(), heartbeat=0.01, trusted_tools=sys.platform != "darwin")
@@ -115,7 +161,7 @@ async def run(tool):
     loop.messages.deliver("user", "astra", "Investigate both claims", message_id="question")
     result = await loop.run(seconds=12)
     assert not [t for t in result["turns"] if t["status"] == "blocked"], result
-    assert overlap and parent_turns == 3
+    assert overlap and parent_turns >= 3
     assert (root / "work/verified.txt").read_text() == "parent verified"
     assert [a["id"] for a in loop.agents.all() if a["role"] == "sol"] == ["researcher"]
     branches = loop.store.events("branch.created")

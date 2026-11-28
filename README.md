@@ -34,14 +34,18 @@ package. Delivery does not end the agent's assignment. Only continuous Astra can
 create persistent Sols. Self-forks pin the exact parent request and retain the
 owner's identity, with separate history and writable files.
 
-Use `additional_content.question` when preparing evidence before final text exists.
-Large additions without that purpose remain references, with an explicit sender
-receipt; no empty-question reader call is bought. `additional_content.references`
-retains selected original files without another extraction. Existing selected
-evidence can be sent through `files` or `results`. Extraction failures accompany
-the message as limitations alongside the retained original. New profiles guide
-Astra toward one lead owner per coherent deliverable and early focused self-forks;
-this is planning guidance, not a hard-coded specialist topology.
+Plain file attachments and tool results are delivered without model calls. To
+prepare new evidence, explicitly list `extract` (with its actual question) in
+`additional_content.tools`, or attach a previously prepared result. Published
+`source:<sha256>` references identify exact immutable bytes; citing one in final
+text forwards it and its declared supporting sources. Recipients get read-only
+local copies without access to the sender's private directories. Final-field text
+is preserved unchanged. Owners can read their own fork outputs.
+
+`read_file` returns exact text pages with explicit continuation coordinates; it
+never replaces the requested range with an LLM summary. Generic result delivery
+and large shell output likewise perform no inference. Large results retain their
+full bytes and source references; a tool-provided summary may accompany them.
 
 For substantial work, owner instructions call for `work/plan.md`: numbered tasks,
 dependencies, owners, status, expected evidence and stopping conditions. Launch
@@ -289,3 +293,8 @@ permission grants.
 Use `--browser-root EXISTING_PROJECT` to reuse its already prepared and granted
 Safari helper with a fresh `--root`. Only the native helper/lease lives there;
 captured sources, agent history and receipts stay in the new runtime root.
+
+Fork creation now returns a completion result to its parent, so one native fork
+call can be followed by more planning without waiting for the child report.
+Journal appends index only the new event after the original is durable; complete
+scans remain for external changes and recovery. File/directory fsync is retained.

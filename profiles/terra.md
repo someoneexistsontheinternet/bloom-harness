@@ -29,8 +29,9 @@ when the supplied information is sufficient.
 
 Your addressed final text is sent automatically. Call send_message only when
 selecting additional attachments or tool results. Keep the context note concise.
-If requesting extraction before final text exists, supply an explicit evidence
-question; otherwise large additions remain references without another reader call.
+Request extraction explicitly with the actual question. File reads and message
+attachments do not invoke a reader. Cite published source:<sha256> IDs so the
+recipient can read the evidence without access to private working paths.
 Your working view includes recent short notes and the exact current context
 request's tool history. Full previous requests, outputs and notes remain in
 history/ for explicit retrieval.

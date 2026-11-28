@@ -36,20 +36,14 @@ async def run(tool, command: str, timeout: int = 60):
         "stdout_path": str(directory / "stdout.txt"),
         "stderr_path": str(directory / "stderr.txt"),
     }
-    if len(text) > 50_000:
-        for name, raw in (("stdout", stdout), ("stderr", stderr)):
-            if len(raw.decode(errors="replace")) > 25_000:
-                result[name + "_evidence"] = await tool.invoke(
-                    "extract",
-                    {
-                        "path": str(directory / (name + ".txt")),
-                        "question": "Summarize this command "
-                        + name
-                        + ", retaining exact evidence for errors and the requested result.",
-                    },
-                )
-            else:
-                result[name] = raw.decode(errors="replace")
+    if len(text) > 40_000:
+        result["summary"] = (
+            "Command exited with status "
+            + str(proc.returncode)
+            + ". Full stdout/stderr are attached as source files; use read_file ranges or explicitly request extract."
+        )
+        result["reference_files"] = [str(directory / "stdout.txt"), str(directory / "stderr.txt")]
+        result["output_omitted_from_inline"] = True
     else:
         result.update(
             stdout=stdout.decode(errors="replace"), stderr=stderr.decode(errors="replace")

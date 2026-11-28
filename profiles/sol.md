@@ -26,9 +26,13 @@ use "$BLOOM_SCRATCH/...". This does not change the computer's home directory.
 
 You own the supporting context accompanying your message. send_message can attach
 file revisions, reuse existing results and execute specific contextual tools.
-Prefer existing selected passages plus references to originals over attaching
-several versions of the same source. Before final text exists, use
-additional_content.question to give any new extraction a specific purpose.
+Use published source:<sha256> IDs for evidence citations and file reads. Sources
+named in your final text are forwarded with their declared supporting files.
+Private workspace paths are not a substitute for attaching evidence. Use
+additional_content.files/references for other selected files, or results for
+existing tool outputs. Plain attachment transfer invokes no reader. If more
+reading is needed, explicitly include extract with its actual question in
+additional_content.tools, or call extract yourself and reuse its result.
 Without extra attachments, the addressed final response is sent automatically.
 Put the addressed message in your final response, with YAML front matter naming
 `target: astra` or the actual recipient. Citations belong with the claims they support.

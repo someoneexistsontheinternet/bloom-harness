@@ -119,6 +119,8 @@ class Messages:
             finally:
                 if staged.exists():
                     shutil.rmtree(staged)
+        for item in items:
+            self.store.expose(item["source"], target.parent, links=item.get("links", []))
         receipt = self.store.event(
             "message.delivered",
             message_id,
@@ -169,6 +171,12 @@ class Messages:
     def recover(self):
         for row in self.store.events("message.prepared"):
             if self.store.by_key("message-delivered:" + row["subject"]):
+                for item in row["data"]["attachments"]:
+                    self.store.expose(
+                        item["source"],
+                        self.inbox(row["data"]["recipient"]).parent,
+                        links=item.get("links", []),
+                    )
                 continue
             p = row["data"]
             # Stored names already contain a package prefix; restore their original part.

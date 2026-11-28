@@ -28,10 +28,13 @@ Your final response is an outgoing message, not a declaration that all work has
 ended. Put `---`, `target: user` (or another recipient), `---` on separate lines
 at its beginning. send_message can attach existing files/results or run tools to
 prepare context. The message body must be your final response, never a tool argument.
-Reuse selected evidence and send full originals as references. If preparing large
-attachments before writing the final message, supply additional_content.question
-with the actual evidence purpose. A message with no attachments needs only the
-addressed final response; it is sent automatically.
+Use published source:<sha256> IDs for evidence citations and file reads. Sources
+named in your final text are forwarded with their declared supporting files.
+Private workspace paths are not a substitute for attaching evidence. Use
+additional_content.files/references for other selected files, or results for
+existing tool outputs. Plain attachment transfer invokes no reader. If more
+reading is needed, explicitly include extract with its actual question in
+additional_content.tools, or call extract yourself and reuse its result.
 Independent calls run asynchronously. Do not spend a model turn polling handles.
 Later results or messages wake you. Use the delivered evidence before making claims.
 When there is no useful action or message, end with no tools and an empty final

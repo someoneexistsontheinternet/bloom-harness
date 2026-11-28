@@ -289,10 +289,19 @@ class Context:
                     "text": "Attachment: "
                     + str(attachment)
                     + "; source "
-                    + item["source"]["sha256"],
+                    + item["source"]["sha256"]
+                    + (
+                        ""
+                        if legacy_paths
+                        else "; portable read/citation: source:" + item["source"]["sha256"]
+                    ),
                 }
             )
             if item.get("expose") == "reference":
+                if item.get("preview"):
+                    parts.append(
+                        {"type": "input_text", "text": "Tool-provided summary:\n" + item["preview"]}
+                    )
                 parts.append(
                     {
                         "type": "input_text",

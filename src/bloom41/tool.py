@@ -6,6 +6,7 @@ import importlib.util
 import inspect
 import json
 from pathlib import Path
+import re
 import types
 import uuid
 
@@ -137,6 +138,19 @@ def resolve_path(root, value, *, read_roots=(), shared=None, memory=None, write=
     """Resolve agent paths and legacy inbox references using explicit source grants."""
     root = Path(root).resolve()
     grants = [Path(p).resolve() for p in read_roots]
+    source = re.fullmatch(r"source:([a-f0-9]{64})", str(value))
+    if source:
+        if write:
+            raise PermissionError("Published sources are read-only")
+        for grant in (root, *grants):
+            candidate = (grant / "sources" / source[1]).resolve()
+            if not candidate.is_relative_to(grant):
+                raise PermissionError("Published source escapes its read grant")
+            if candidate.is_file():
+                if digest(candidate.read_bytes()) != source[1]:
+                    raise ValueError("Published source differs from its immutable identity")
+                return candidate
+        raise FileNotFoundError("Source has not been published to this identity: " + str(value))
     value = Path(value)
     home_relative = bool(value.parts and value.parts[0] == "~")
     if home_relative:
@@ -151,6 +165,7 @@ def resolve_path(root, value, *, read_roots=(), shared=None, memory=None, write=
     elif home_relative or first in (
         "work",
         "scratch",
+        "sources",
         "memory",
         "tools",
         "inbox",
@@ -213,6 +228,24 @@ class Tool:
             memory=self.memory,
             write=write,
         )
+
+    def media(self, value):
+        path = self.path(value)
+        metadata = path.with_name(path.name + ".json")
+        if (
+            path.parent.name == "sources"
+            and re.fullmatch(r"[a-f0-9]{64}", path.name)
+            and metadata.is_file()
+        ):
+            return json.loads(metadata.read_bytes())["media"]
+        return {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+            ".json": "application/json",
+        }.get(path.suffix.lower(), "text/plain")
 
     async def request(self, action, **arguments):
         reader, writer = await asyncio.open_connection(

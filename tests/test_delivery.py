@@ -50,7 +50,7 @@ async def test_value_preparation_survives_reindex_and_reuses_frozen_evidence(tmp
         "value": {"text": "x" * 50_001, "files": [str(source)], "nested": [jobs.token(job["id"])]},
     }
     first = await delivery.attach_value(actor, job, args)
-    assert first["needs_extraction"]
+    assert first["expose"] == "reference"
     assert store.json(first["source"])["nested"] == ["[REDACTED]"]
     source.write_text("later revision")
     snapshot = Path(first["snapshot_path"])
@@ -218,12 +218,7 @@ async def test_large_sender_evidence_never_uses_an_empty_question_or_blocks_deli
         assert outcome["status"] == "needs_final_message"
         assert not Messages(store).pending("user")
         readers = [j for j in jobs.states() if j["name"] == "extract"]
-        assert len(readers) == (1 if mode in ("purpose", "failed-reader") else 0)
-        if mode == "missing-purpose":
-            assert (
-                outcome["reference_only"]
-                and "No extraction was purchased" in outcome["preparation_note"]
-            )
+        assert not readers  # A question on a transport call does not authorize hidden inference.
         # Publication reuses the exact already prepared revision, even if the
         # source has changed before the addressed final message arrives.
         (root / "work/source.txt").write_text("Later unselected source revision")
@@ -235,17 +230,7 @@ async def test_large_sender_evidence_never_uses_an_empty_question_or_blocks_deli
         assert store.read(package["body"]).decode() == text
         assert store.read(package["attachments"][0]["source"]).decode() == original
         assert package["attachments"][0]["expose"] == "reference"
-        if mode == "failed-reader":
-            assert any(
-                "fixture source unavailable" in store.read(a["source"]).decode()
-                for a in package["attachments"][1:]
-            )
-        elif mode == "purpose":
-            evidence = json.loads(store.read(package["attachments"][1]["source"]))
-            assert (
-                evidence["summary"] == "Verified condition"
-                and "Verify the dated condition" in evidence["question"]
-            )
+        assert len(package["attachments"]) == 1
         assert not store.events("model.started")
     finally:
         await jobs.close()

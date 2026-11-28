@@ -88,6 +88,12 @@ class Agents:
 
     def read_roots(self, actor):
         roots = [self.store.root / "workspace/shared"]
+        if not actor.branch and self.get(actor)["role"] in ("astra", "sol"):
+            roots.extend(
+                self.path(Actor(actor.agent, row["subject"]))
+                for row in self.store.events("branch.created")
+                if row["data"]["owner"] == actor.agent
+            )
         if self.get(actor)["role"] == "terra" and actor.agent.startswith("terra-"):
             owner = actor.agent.removeprefix("terra-")
             roots.append(self.path(owner))
@@ -150,7 +156,7 @@ class Agents:
 
     def materialize(self, actor, data, *, source=None):
         root = self.path(actor)
-        for folder in ("tools", "inbox", "outbound", "history", "work", "scratch"):
+        for folder in ("tools", "inbox", "outbound", "history", "work", "scratch", "sources"):
             (root / folder).mkdir(parents=True, exist_ok=True)
         memory = root / "memory"
         if actor.branch and not memory.exists() and not memory.is_symlink():

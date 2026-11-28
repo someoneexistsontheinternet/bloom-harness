@@ -113,20 +113,23 @@ class Store:
                 checksum = row.pop("digest")
                 if digest(encoded(row)) != checksum:
                     raise ValueError("Journal digest mismatch: " + path.name)
-                self.db.execute(
-                    "INSERT INTO events VALUES(?,?,?,?,?,?,?,?)",
-                    (
-                        row["seq"],
-                        row["key"],
-                        row["kind"],
-                        row["subject"],
-                        row["at"],
-                        encoded(row["data"]).decode(),
-                        path.name,
-                        checksum,
-                    ),
-                )
+                self._index(row, path.name, checksum)
         self.journal_stamp = stamp
+
+    def _index(self, row, name, checksum):
+        self.db.execute(
+            "INSERT INTO events VALUES(?,?,?,?,?,?,?,?)",
+            (
+                row["seq"],
+                row["key"],
+                row["kind"],
+                row["subject"],
+                row["at"],
+                encoded(row["data"]).decode(),
+                name,
+                checksum,
+            ),
+        )
 
     def event(self, kind, subject, data, *, key):
         with self.locked():
@@ -146,8 +149,13 @@ class Store:
                 "data": data,
             }
             row["digest"] = digest(encoded(row))
-            atomic(self.journal / f"{seq:012d}-{digest(key.encode())[:16]}.json", encoded(row))
-            self._sync()
+            name = f"{seq:012d}-{digest(key.encode())[:16]}.json"
+            atomic(self.journal / name, encoded(row))
+            # The journal is durable first. If indexing fails, leave the stamp
+            # unchanged so the next sync recovers the acknowledged original.
+            with self.db:
+                self._index(row, name, row["digest"])
+            self.journal_stamp = self.journal.stat().st_mtime_ns
             return row
 
     @staticmethod
@@ -210,6 +218,20 @@ class Store:
 
     def json(self, ref):
         return json.loads(self.read(ref))
+
+    def expose(self, ref, root, *, links=()):
+        """Materialize an authorized, read-only source view; originals stay private."""
+        directory = Path(root) / "sources"
+        path = directory / ref["sha256"]
+        raw = self.read(ref)
+        if not path.exists() or digest(path.read_bytes()) != ref["sha256"]:
+            atomic(path, raw)
+        metadata = directory / (ref["sha256"] + ".json")
+        previous = json.loads(metadata.read_bytes()) if metadata.exists() else {}
+        value = {**ref, "links": sorted(set(previous.get("links", [])).union(links))}
+        if previous != value:
+            atomic(metadata, encoded(value))
+        return path
 
     def close(self):
         self.db.close()

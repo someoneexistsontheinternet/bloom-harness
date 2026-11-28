@@ -6,7 +6,7 @@ INTERACTIVE = True
 
 
 async def run(tool, recipient: str, additional_content: dict | None = None):
-    """Send your exact final-field message. additional_content supports files (paths), references (paths to retain without reading), results (existing job IDs), tools ({name,args}), and question (the evidence purpose). Reuse prepared evidence. Large additions are extracted only with a question or existing final text; otherwise they remain references. Preparation without final text is retained for your next addressed final response. Delivery does not wait for a reply."""
+    """Send your exact final-field message. additional_content supports files (paths), references (paths to retain without reading), results (existing job IDs), tools ({name,args}), and question (the evidence purpose). Plain files/results are copied without model calls. To read evidence, explicitly include extract in tools with its actual question. Published source IDs cited in final text are forwarded automatically. Preparation without final text is retained for your next addressed final response. Delivery does not wait for a reply."""
     content = additional_content or {}
     if set(content) - {"files", "references", "results", "tools", "question"}:
         raise ValueError(
@@ -18,50 +18,17 @@ async def run(tool, recipient: str, additional_content: dict | None = None):
     if not isinstance(content.get("question", ""), str):
         raise ValueError("The evidence question must be text")
     attachments = []
-    reference_only = []
-    body = await tool.request("message_body", recipient=recipient)
-    question = content.get("question", "").strip() or body["text"].strip()
-
-    async def select(record, name):
-        if not record.get("needs_extraction"):
-            return
-        if not question:
-            reference_only.append(record["snapshot_path"])
-            return
-        try:
-            value = await tool.invoke(
-                "extract",
-                {
-                    "path": record["snapshot_path"],
-                    "question": "Extract the evidence relevant to this outgoing message or explicit purpose:\n"
-                    + question,
-                },
-            )
-        except Exception as exc:
-            value = {
-                "status": "unavailable",
-                "error": str(exc),
-                "source_path": record["snapshot_path"],
-                "notice": "Extraction failed. The exact original remains attached by reference.",
-            }
-        selected = await tool.request("attach_value", name=name, value=value)
-        attachments.append(selected["id"])
-
     # Freeze file revisions before awaiting other work.
-    files = []
     for path in content.get("files", []):
         if not isinstance(path, str):
             raise ValueError("File attachments must be paths")
         record = await tool.request("attach_file", path=path)
-        attachments.append(record["id"])
-        files.append(record)
+        attachments.extend([record["id"], *record.get("related", [])])
     for path in content.get("references", []):
         if not isinstance(path, str):
             raise ValueError("Reference attachments must be paths")
         record = await tool.request("attach_file", path=path, reference=True)
-        attachments.append(record["id"])
-    for record in files:
-        await select(record, "extracted-file.json")
+        attachments.extend([record["id"], *record.get("related", [])])
 
     async def existing(handle):
         result = await tool.wait_result(handle)
@@ -91,12 +58,6 @@ async def run(tool, recipient: str, additional_content: dict | None = None):
     )
     for item in additions:
         attachments.extend([item["id"], *item.get("related", [])])
-        await select(item, "selected-result.json")
-    result = await tool.request("publish_message", recipient=recipient, attachments=attachments)
-    if reference_only:
-        result = {
-            **result,
-            "reference_only": reference_only,
-            "preparation_note": "No extraction was purchased without an evidence purpose. Supply additional_content.question or attach existing selected evidence if passages are needed.",
-        }
-    return result
+    return await tool.request(
+        "publish_message", recipient=recipient, attachments=list(dict.fromkeys(attachments))
+    )

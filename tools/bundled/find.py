@@ -36,4 +36,8 @@ async def run(tool, query: str, directory: str = "work", filenames: bool = False
         if len(matches) >= limit:
             truncated = True
             break
-    return {"matches": matches, "more_may_exist": truncated}
+    return {
+        "matches": matches,
+        "more_may_exist": truncated,
+        "summary": f"Found {len(matches)} matching entries. More may exist: {truncated}. The exact list is retained in this result; read it by source ID if it exceeds the inline budget.",
+    }
