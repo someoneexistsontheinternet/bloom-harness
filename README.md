@@ -245,6 +245,34 @@ purchase. This text-only source check does not establish whole-search latency;
 native-image projection and independent multi-source/window execution are covered
 by the offline fixtures. Both live checks used the committed reader implementation.
 
+A later controlled effort pilot on `755e128` kept the full source, question,
+reader prompt and native screenshot identical within each case. Three retained
+pages (price history, earnings release and presentation) were read twice at each
+effort, for 24 fresh requests. All completed, and provider prompt-cache usage was
+zero. Only reasoning effort varied. A source-backed checklist was frozen before
+the calls; one assistant graded outputs with effort/timing labels hidden before
+joining them to receipts. Scores measure details retained in excerpts or summaries,
+not independent verification of the financial claims.
+
+| Luna effort | Median request time | Retained details | Visual structure/coverage | Mean reasoning tokens |
+|---|---:|---:|---:|---:|
+| medium | 16.5s | 59/60 | 12/12 | 164 |
+| high | 25.9s | 56/60 | 12/12 | 738 |
+| xhigh | 85.7s | 59/60 | 12/12 | 4,937 |
+| max | 174.2s | 60/60 | 12/12 | 8,378 |
+
+All settings retained the six requested closes and all ten presentation criteria.
+Medium and high each omitted named permit/financing qualifications in one release
+read while retaining its binding-customer-agreement condition. Other misses were
+secondary company-name/current-quote details. Every response flagged useful visual
+structure and correctly limited screenshot coverage; no invalid quote ranges,
+summary gaps or material unsupported claims were found in this audit. One medium
+response had a minor page-number description error, retained in the detailed grades.
+The maintained default stays medium with screenshots. Max took about 10.5 times
+the median latency for one additional checklist item over medium in this small
+pilot. Six samples per effort across three related sources do not establish a
+general quality ranking or guarantee that medium will preserve every qualification.
+
 A user-inbox answer does not terminate other agents' outstanding work. `run` may
 therefore reach its allowance and exit with status 2 after delivering an answer;
 inspect the inbox and run status separately. Unstarted budget-blocked work remains
