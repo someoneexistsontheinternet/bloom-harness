@@ -4,12 +4,13 @@
 flowchart LR
     U[CLI input] --> I[Recipient inbox package]
     I --> T[Recipient Terra: gather context]
-    T --> C[Context: native history and approved memory]
+    I --> C[Context: native history and approved memory]
+    T -. supplemental note .-> C
     C --> A[Persistent agent decision]
     A --> O[Outbound: message.txt and call files]
     O --> J[Jobs: isolated asynchronous tools]
     J --> R[Result inbox package]
-    R --> T
+    R --> C
     O --> S[send_message.py: selected files and tool results]
     S --> I
 ```
@@ -62,6 +63,8 @@ scripts/                    maintained verification workflows
       history/              exact native operations
       memory/               L0.md, L1.md, L2/*.md
       work/                 writable work and source copies
+        plan.md             task hierarchy, owners, dependencies and results
+      scratch/              private drafts and temporary files
     branches/<id>/          independent files/history under the same owner
     shared/memory/          readable by owners; only continuous Astra approves edits
     jobs/<scope>/<job>/     frozen code, request, status and executor log
@@ -75,8 +78,10 @@ copied into message packages. The event index can be reconstructed with `reindex
 An ambiguous accepted model/tool effect is surfaced, never silently replayed.
 `resume` is an explicit operator decision after inspecting those receipts.
 
-An agent may edit `work/` and its own `tools/`. Parent source grants are read-only
+An agent may edit `work/`, `scratch/` and its own `tools/`. New forks have a
+read-only `memory/` link to their owner, with independent work/scratch files.
+Parent source grants are read-only
 for self-forks. Terra reads its owner's files but can only write its own temporary
-tool scratch. Durable memory needs the exact native approval from the owning
+tool scratch. It also has read access to the branches it monitors. Durable memory needs the exact native approval from the owning
 decision. The macOS sandbox enforces file access; the broker derives authority
 from execution credentials, not a caller-supplied identity.

@@ -63,7 +63,7 @@ class DemoProvider:
                     "Scripted Terra requires an explicit context or monitoring request"
                 )
             target = (ordinary or activity).group(1)
-            disposition = "stage" if activity else "deliver"
+            disposition = "stage"  # No new evidence; originals already reach their owner.
             output = [
                 message(
                     f"---\ntarget: {target}\ndisposition: {disposition}\n---\nUse the supplied originals. Preserve the original request and check the real command output."

@@ -89,7 +89,13 @@ class Agents:
     def read_roots(self, actor):
         roots = [self.store.root / "workspace/shared"]
         if self.get(actor)["role"] == "terra" and actor.agent.startswith("terra-"):
-            roots.append(self.path(actor.agent.removeprefix("terra-")))
+            owner = actor.agent.removeprefix("terra-")
+            roots.append(self.path(owner))
+            roots.extend(
+                self.path(Actor(owner, row["subject"]))
+                for row in self.store.events("branch.created")
+                if row["data"]["owner"] == owner
+            )
         seen = set()
         while actor.branch and actor.branch not in seen:
             seen.add(actor.branch)
@@ -144,8 +150,13 @@ class Agents:
 
     def materialize(self, actor, data, *, source=None):
         root = self.path(actor)
-        for folder in ("tools", "inbox", "outbound", "history", "memory/L2", "work"):
+        for folder in ("tools", "inbox", "outbound", "history", "work", "scratch"):
             (root / folder).mkdir(parents=True, exist_ok=True)
+        memory = root / "memory"
+        if actor.branch and not memory.exists() and not memory.is_symlink():
+            memory.symlink_to(self.path(actor.agent) / "memory", target_is_directory=True)
+        if not actor.branch:
+            (memory / "L2").mkdir(parents=True, exist_ok=True)
         atomic(
             root / "identity.toml",
             (
@@ -179,7 +190,7 @@ class Agents:
                 {"names": [p.stem for p in sorted((root / "tools").glob("*.py"))]},
                 key="tools-seeded:" + actor.scope,
             )
-        for name in ("L0.md", "L1.md"):
+        for name in () if actor.branch else ("L0.md", "L1.md"):
             path = root / "memory" / name
             if not path.exists():
                 atomic(path, b"")

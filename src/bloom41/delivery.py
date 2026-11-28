@@ -6,6 +6,7 @@ from pathlib import Path
 from .agents import Agents
 from .messages import Messages
 from .store import atomic, digest, encoded
+from .tool import resolve_path
 
 
 class Delivery:
@@ -32,23 +33,13 @@ class Delivery:
         return {"text": self.store.read(turn["final"]).decode(), "turn": turn["id"]}
 
     def path(self, actor, value):
-        root = self.agents.path(actor)
-        path = Path(value)
-        if not path.is_absolute():
-            path = (
-                (self.store.root / "workspace" / path)
-                if path.parts and path.parts[0] == "shared"
-                else (
-                    root / path
-                    if path.parts
-                    and path.parts[0] in ("work", "memory", "tools", "inbox", "outbound", "history")
-                    else root / "work" / path
-                )
-            )
-        path = path.resolve()
-        if not any(path.is_relative_to(r) for r in (root, *self.agents.read_roots(actor))):
-            raise PermissionError("File is outside this sender's source grants")
-        return path
+        return resolve_path(
+            self.agents.path(actor),
+            value,
+            read_roots=self.agents.read_roots(actor),
+            shared=self.store.root / "workspace/shared",
+            memory=self.agents.path(actor.agent) / "memory",
+        )
 
     def attachment(self, actor, job, name, source, *, expose="inline", provenance=None):
         ident = "attachment_" + digest(encoded([job["id"], name, source, expose]))[:24]

@@ -35,7 +35,7 @@ class Conversation:
             match = re.search(r"Gather only context useful to ([\w-]+)", latest)
             activity = re.search(r"Monitor the latest turn of ([\w-]+)", latest)
             target = (match or activity).group(1)
-            disposition = "stage" if activity else "deliver"
+            disposition = "stage"
             output = [
                 final(
                     f"---\ntarget: {target}\ndisposition: {disposition}\n---\nRelevant context is attached; retain the original question."

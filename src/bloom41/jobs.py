@@ -316,6 +316,7 @@ class Jobs:
         root = self.agents.path(actor)
         temporary = root / "work/.tmp"
         temporary.mkdir(exist_ok=True)
+        (root / "scratch").mkdir(exist_ok=True)
         code_root = Path(__file__).resolve().parents[2]
         python_paths = [Path(__file__).resolve().parent.parent, code_root / "lib"]
         script = self.directory(job["id"]) / "tool.py"
@@ -336,9 +337,9 @@ class Jobs:
         ]
         read_paths.extend(self.agents.read_roots(actor))
         write_paths = (
-            [root / "work", root / "tools"]
+            [root / "work", root / "tools", root / "scratch"]
             if self.agents.get(actor)["role"] in ("astra", "sol")
-            else [temporary]
+            else [temporary, root / "scratch"]
         )
         profile = sandbox_profile(read_paths, write_paths)
         command = [sys.executable, "-m", "bloom41.worker"]
@@ -363,11 +364,13 @@ class Jobs:
             "arguments": job["arguments"],
             "read_roots": [str(p) for p in self.agents.read_roots(actor)],
             "shared_root": str(self.store.root / "workspace/shared"),
+            "memory_root": str(self.agents.path(actor.agent) / "memory"),
         }
         env = {
             "PATH": "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
             "LANG": "en_US.UTF-8",
             "TMPDIR": str(temporary),
+            "BLOOM_SCRATCH": str(root / "scratch"),
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONPATH": os.pathsep.join(map(str, python_paths)),
         }

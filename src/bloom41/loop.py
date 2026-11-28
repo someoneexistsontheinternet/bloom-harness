@@ -289,16 +289,13 @@ class Loop:
             if p["kind"] == "context" and p["metadata"].get("context_for") == actor.scope
         ]
         if not contexts:
-            # A result already belongs to this owner's current work. New messages
-            # still need their context, so never run past an unread instruction.
-            if any(p["kind"] != "tool_result" for p in pending):
-                return []
-            # Honor context preparation accepted by an older runner. Its result
-            # must settle normally instead of consuming its originals twice.
+            # New context is supplemental. Only legacy accepted preparations
+            # hold their original inputs until their recorded return settles.
             covered = {
                 ident
                 for row in self.store.events("context.requested", actor.scope)
-                if not self.store.by_key("context-finished:" + row["data"]["request_id"])
+                if not row["data"].get("supplemental")
+                and not self.store.by_key("context-finished:" + row["data"]["request_id"])
                 for ident in row["data"]["original_ids"]
             }
             return [p for p in pending if p["id"] not in covered]
@@ -310,20 +307,24 @@ class Loop:
             and not self.store.by_key("message-filed:" + i)
         ]
         request_id = chosen["metadata"]["request_id"]
-        if chosen["metadata"].get("disposition") == "stage" and all(
-            p["kind"] == "activity" for p in originals
+        if chosen["metadata"].get("disposition") == "stage" and (
+            chosen["metadata"].get("supplemental")
+            or all(p["kind"] == "activity" for p in originals)
         ):
             self.context.append(
                 actor, [self.context.content(chosen)], key="staged-context:" + chosen["id"]
             )
-            self.messages.file([*originals, chosen], "Terra staged routine activity")
+            self.messages.file(
+                [*[p for p in originals if p["kind"] == "activity"], chosen],
+                "Terra staged a supplemental note",
+            )
             self.store.event(
                 "context.finished",
                 actor.scope,
                 {"request": request_id},
                 key="context-finished:" + request_id,
             )
-            return []
+            return self.ready(actor)
         # Fresh direct instructions arriving while Terra gathered context need not wait again.
         extras = [
             p
@@ -343,7 +344,14 @@ class Loop:
                 for p in pending
             ):
                 continue
-            pending = [p for p in pending if p["kind"] != "tool_result"]
+            requested = {
+                ident
+                for row in self.store.events("context.requested", actor.scope)
+                for ident in row["data"]["original_ids"]
+            }
+            pending = [
+                p for p in pending if p["kind"] != "tool_result" and p["id"] not in requested
+            ]
             if not pending:
                 continue
             outstanding = [
@@ -358,7 +366,7 @@ class Loop:
             text = (
                 "Gather only context useful to "
                 + actor.scope
-                + " for its next response. Do not perform its task. The original incoming messages follow. Return a context note addressed to "
+                + " for its next response. This is supplemental: the recipient can already act on the original message. Do not perform its task or repeat its research. Stage routine notes; deliver only a concrete useful addition. If there is nothing to add, end with no tool calls and an empty final response. The original incoming messages follow. Address any context note to "
                 + actor.scope
                 + ".\n\n"
                 + "\n\n".join(
@@ -384,13 +392,14 @@ class Loop:
                     "context_for": actor.scope,
                     "original_ids": ids,
                     "request_id": ident,
+                    "supplemental": True,
                     "origin": pending[0]["metadata"].get("origin") or pending[0]["id"],
                 },
             )
             self.store.event(
                 "context.requested",
                 actor.scope,
-                {"request_id": ident, "original_ids": ids},
+                {"request_id": ident, "original_ids": ids, "supplemental": True},
                 key="context-request:" + ident,
             )
 
@@ -582,6 +591,7 @@ class Loop:
                     "scope": actor.scope,
                     "status": "prepared",
                     "input_ids": ids,
+                    "input_start": len(request["input"]) - len(packages),
                     "request": self.store.put(request),
                     "tools": definitions,
                     "origin": origin,
@@ -712,9 +722,14 @@ class Loop:
                     frozen=spec,
                 )
         packages = [self.package(i) for i in turn["input_ids"]]
+        inputs = (
+            self.store.json(turn["request"])["input"][turn["input_start"] :]
+            if "input_start" in turn
+            else [self.context.content(p, legacy_paths=True) for p in packages]
+        )
         history = self.context.append(
             actor,
-            [self.context.content(p) for p in packages] + response.get("output", []) + outputs,
+            inputs + response.get("output", []) + outputs,
             key="turn-history:" + turn["id"],
             episode=self.context.episode(packages),
         )

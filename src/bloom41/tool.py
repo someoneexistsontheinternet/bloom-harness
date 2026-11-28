@@ -133,6 +133,59 @@ async def execute(path, tool, args):
     return await value if inspect.isawaitable(value) else value
 
 
+def resolve_path(root, value, *, read_roots=(), shared=None, memory=None, write=False):
+    """Resolve agent paths and legacy inbox references using explicit source grants."""
+    root = Path(root).resolve()
+    grants = [Path(p).resolve() for p in read_roots]
+    value = Path(value)
+    home_relative = bool(value.parts and value.parts[0] == "~")
+    if home_relative:
+        value = Path(*value.parts[1:])
+    first = value.parts[0] if value.parts else ""
+    if value.is_absolute():
+        result = value.resolve()
+    elif first == "shared" and shared:
+        result = (Path(shared) / Path(*value.parts[1:])).resolve()
+    elif first == "memory" and memory:
+        result = (Path(memory) / Path(*value.parts[1:])).resolve()
+    elif home_relative or first in (
+        "work",
+        "scratch",
+        "memory",
+        "tools",
+        "inbox",
+        "outbound",
+        "history",
+    ):
+        result = (root / value).resolve()
+    else:
+        result = (root / "work" / value).resolve()
+    if not result.is_relative_to(root) and not (
+        not write and any(result.is_relative_to(p) for p in grants)
+    ):
+        raise PermissionError("File is outside this agent's workspace")
+    if write:
+        if not any(result.is_relative_to(root / p) for p in ("work", "scratch", "tools")):
+            raise PermissionError(
+                "Write only work/scratch/tools; publish memory through the owning API"
+            )
+    elif first == "inbox" and ".." not in value.parts and not result.exists():
+        # Old native inputs used relative paths. An inherited reference can only
+        # resolve within already-authorized ancestors, never another identity.
+        matches = set()
+        for grant in grants:
+            candidate = (grant / value).resolve()
+            if not candidate.is_relative_to(grant):
+                raise PermissionError("Inherited inbox reference escapes its source grant")
+            if candidate.exists():
+                matches.add(candidate)
+        if len(matches) > 1:
+            raise ValueError("Ambiguous inherited inbox reference; use the absolute source path")
+        if matches:
+            result = matches.pop()
+    return result
+
+
 class Tool:
     """Agent-scoped filesystem and authenticated API; no privileged runtime reference."""
 
@@ -144,35 +197,22 @@ class Tool:
         self.job = specification["job"]
         self.root = Path(specification["agent_root"])
         self.workspace = self.root / "work"
+        self.scratch = self.root / "scratch"
+        self.memory = Path(specification.get("memory_root", self.root / "memory"))
         self.read_roots = [Path(p) for p in specification.get("read_roots", [])]
         self.shared = (
             Path(specification["shared_root"]) if specification.get("shared_root") else None
         )
 
     def path(self, value, *, write=False):
-        value = Path(value)
-        if value.is_absolute():
-            result = value.resolve()
-        elif value.parts and value.parts[0] == "shared" and self.shared:
-            result = (self.shared / Path(*value.parts[1:])).resolve()
-        elif value.parts and value.parts[0] in (
-            "work",
-            "memory",
-            "tools",
-            "inbox",
-            "outbound",
-            "history",
-        ):
-            result = (self.root / value).resolve()
-        else:
-            result = (self.workspace / value).resolve()
-        if not result.is_relative_to(self.root) and not (
-            not write and any(result.is_relative_to(p) for p in self.read_roots)
-        ):
-            raise PermissionError("File is outside this agent's workspace")
-        if write and not any(result.is_relative_to(self.root / p) for p in ("work", "tools")):
-            raise PermissionError("Write only work/tools; publish memory through the owning API")
-        return result
+        return resolve_path(
+            self.root,
+            value,
+            read_roots=self.read_roots,
+            shared=self.shared,
+            memory=self.memory,
+            write=write,
+        )
 
     async def request(self, action, **arguments):
         reader, writer = await asyncio.open_connection(

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .agents import Actor, Agents, PROFILES
 from .models import final_text, visible
+from .messages import Messages
 from .store import atomic, digest, encoded, uid
 from .tokens import count, limit
 from .tool import discover
@@ -81,7 +82,9 @@ class Context:
                     + branch["data"]["question"]
                     + ". Send your conclusion to "
                     + branch["data"]["parent_scope"]
-                    + ". You retain the parent identity but cannot create persistent agents or change its memory.",
+                    + ". You retain the parent identity but cannot create persistent agents or change its memory. Your private filesystem root is "
+                    + str(root)
+                    + "; work/plan.md and scratch/ belong to this branch. memory/ reads the owner's durable files. Parent source paths are read-only. Decompose substantial independent subwork into focused forks when useful, then integrate their returns.",
                 }
             ]
             instructions = request["instructions"]
@@ -263,7 +266,7 @@ class Context:
             selected[package["id"]] = package
         return list(selected.values())
 
-    def content(self, package):
+    def content(self, package, *, legacy_paths=False):
         parts = [
             {
                 "type": "input_text",
@@ -277,13 +280,14 @@ class Context:
         ]
         for item in package["attachments"]:
             media = item["media"]
+            attachment = Path("inbox") / package["id"] / "attachments" / item["name"]
+            if not legacy_paths:
+                attachment = Messages(self.store).inbox(package["recipient"]).parent / attachment
             parts.append(
                 {
                     "type": "input_text",
-                    "text": "Attachment: inbox/"
-                    + package["id"]
-                    + "/attachments/"
-                    + item["name"]
+                    "text": "Attachment: "
+                    + str(attachment)
                     + "; source "
                     + item["source"]["sha256"],
                 }

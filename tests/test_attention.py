@@ -1,5 +1,7 @@
 """Owner progress and narrow Terra context preparation share durable messages."""
 
+import asyncio
+
 from bloom41.agents import Actor
 from bloom41.loop import Loop
 from bloom41.store import encoded
@@ -24,7 +26,7 @@ def context_note(loop, request):
     )
 
 
-def test_ready_tool_result_needs_no_context_purchase_but_new_instructions_are_not_skipped(tmp_path):
+def test_new_instructions_and_results_are_ready_without_waiting_for_supplemental_context(tmp_path):
     loop = Loop(tmp_path, Scripted())
     result(loop)
     loop.request_contexts()
@@ -32,10 +34,12 @@ def test_ready_tool_result_needs_no_context_purchase_but_new_instructions_are_no
     assert [p["id"] for p in loop.ready(Actor("astra"))] == ["result"]
 
     loop.messages.deliver("user", "astra", "Use the amended numbers", message_id="correction")
-    assert loop.ready(Actor("astra")) == []
+    assert {p["id"] for p in loop.ready(Actor("astra"))} == {"result", "correction"}
     loop.request_contexts()
     (request,) = loop.store.events("context.requested")
     assert request["data"]["original_ids"] == ["correction"]
+    assert request["data"]["supplemental"]
+    assert {p["id"] for p in loop.ready(Actor("astra"))} == {"result", "correction"}
     context_note(loop, request)
     ready = loop.ready(Actor("astra"))
     assert {p["id"] for p in ready} == {"result", "correction", "note"}
@@ -61,6 +65,89 @@ def test_result_with_previously_accepted_context_preparation_settles_on_reopen(t
     assert {p["id"] for p in reopened.ready(Actor("astra"))} == {"result", "note"}
     assert not reopened.store.events("model.started")
     reopened.store.close()
+
+
+async def test_original_instruction_starts_while_terra_is_still_preparing_and_idle_finishes(
+    tmp_path,
+):
+    terra_started, owner_started, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    class Provider:
+        simulated = True
+
+        async def generate(self, request):
+            if request["model"].endswith("terra"):
+                terra_started.set()
+                await release.wait()
+            else:
+                assert "Do this work now" in encoded(request).decode()
+                owner_started.set()
+            return {"status": "completed", "output": []}, []
+
+    loop = Loop(tmp_path, Provider(), heartbeat=0.01)
+    loop.models.grant(2)
+    loop.messages.deliver("user", "astra", "Do this work now", message_id="instruction")
+    running = asyncio.create_task(loop.run(seconds=5))
+    try:
+        await asyncio.wait_for(asyncio.gather(terra_started.wait(), owner_started.wait()), 3)
+        assert not release.is_set()
+        release.set()
+        await running
+        assert all(t["status"] == "completed" for t in loop.turns())
+        (context,) = loop.store.events("context.requested")
+        assert loop.store.by_key("context-finished:" + context["data"]["request_id"])
+        assert not loop.messages.pending("astra")
+        assert not loop.messages.pending("terra-astra")
+        await loop.run()
+        assert len(loop.store.events("model.started")) == 2
+    finally:
+        release.set()
+        await running
+        loop.store.close()
+
+
+def test_staged_supplement_neither_drops_original_nor_creates_a_later_turn(tmp_path):
+    loop = Loop(tmp_path, Scripted())
+    loop.messages.deliver("user", "astra", "Original", message_id="original")
+    loop.request_contexts()
+    (request,) = loop.store.events("context.requested")
+    loop.messages.deliver(
+        "terra-astra",
+        "astra",
+        "Routine note",
+        message_id="stage",
+        kind="context",
+        metadata={**request["data"], "context_for": "astra", "disposition": "stage"},
+    )
+    assert [p["id"] for p in loop.ready(Actor("astra"))] == ["original"]
+    assert not loop.store.by_key("message-filed:original")
+    assert loop.store.by_key("message-filed:stage")
+    loop.messages.consume(loop.messages.pending("astra"), "fixture")
+    assert not loop.ready(Actor("astra"))
+    loop.store.close()
+
+
+async def test_empty_legacy_context_settles_without_reissuing_original_preparation(tmp_path):
+    loop = Loop(tmp_path, Scripted({"status": "completed", "output": []}))
+    loop.messages.deliver("user", "astra", "Original instruction", message_id="original")
+    metadata = {"context_for": "astra", "request_id": "legacy", "original_ids": ["original"]}
+    loop.messages.deliver(
+        "system",
+        "terra-astra",
+        "Accepted preparation",
+        message_id="legacy",
+        kind="context_request",
+        metadata=metadata,
+    )
+    loop.store.event("context.requested", "astra", metadata, key="context-request:legacy")
+    assert not loop.ready(Actor("astra"))
+    loop.models.grant(1)
+    await loop.advance(Actor("terra-astra"), loop.ready(Actor("terra-astra")))
+    assert loop.store.by_key("context-finished:legacy")
+    loop.request_contexts()
+    assert len(loop.store.events("context.requested")) == 1
+    assert [p["id"] for p in loop.ready(Actor("astra"))] == ["original"]
+    loop.store.close()
 
 
 def test_context_attachments_stay_retrievable_without_duplicating_them_in_terra_input(tmp_path):

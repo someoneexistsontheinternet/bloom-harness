@@ -1,7 +1,8 @@
 # Working on Bloom v4.1
 
 Read README.md, docs/design.md and the ignored notes/current.md before substantial work.
-The user-approved architecture is inbox → Terra → agent → outbound. Preserve the
+The user-approved architecture is inbox → agent → outbound, with Terra preparing
+supplemental context concurrently instead of blocking assignments. Preserve the
 latest user corrections over inherited v3/v4 assumptions.
 
 - One integrator. Do not change the separate v3/v4 checkouts, their environments,
@@ -25,6 +26,13 @@ latest user corrections over inherited v3/v4 assumptions.
   atomic delivery. Delivery is independent of assignment completion.
 - Wait locally. Wake only for material input/results or explicitly continuing
   independent work. Do not buy model calls to poll jobs or announce receipts.
+- A completed empty response parks cleanly; never manufacture wake-ups with shell
+  sleeps. Each identity has one active turn, with no global actor cap. Remote
+  model/browser waits release the local tool launch budget, including nested calls.
+- Guide substantial work with work/plan.md: task hierarchy, dependencies, owners,
+  expected returns and results. Launch ready independent forks together and keep
+  integration with the lead. Plans are files, not submission contracts. Each fork
+  has private work/scratch and read-only access to its owner's filesystem memory.
 - Model API calls have no harness concurrency-slot limit. Preserve per-request
   deduplication, durable purchase intents and the explicit total call allowance.
 - Return terminal tool results directly to their owner; do not buy a Terra pass

@@ -2,7 +2,7 @@ import asyncio
 
 
 async def run(tool, command: str, timeout: int = 60):
-    """Run bash in your work directory. Independent commands can be separate calls. Waits happen locally; stdout, stderr and exit status are retained. Do not poll jobs with model turns."""
+    """Run bash in your work directory; use $BLOOM_SCRATCH for private temporary files. Independent commands can be separate calls. stdout, stderr and exit status are retained. Never use sleep or polling to get another model turn: an empty final response parks until real input arrives."""
     if timeout < 1 or timeout > 86400:
         raise ValueError("Choose a timeout between 1 and 86400 seconds")
     directory = tool.workspace / "command-output" / tool.job

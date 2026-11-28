@@ -1,7 +1,8 @@
 # Bloom v4.1 experimental
 
 A fresh CLI implementation on `cli-v4.1-experimental`, from public main.
-Filesystem inbox → recipient Terra → persistent agent → filesystem outbound.
+Filesystem inbox → persistent agent → filesystem outbound, with recipient Terra
+preparing supplemental context alongside the agent.
 The design and acceptance criteria are in [docs/design.md](docs/design.md).
 The object map and filesystem tree are in [docs/layout.md](docs/layout.md).
 
@@ -13,9 +14,11 @@ typed entry points. New messages and actual results wake agents; waiting and
 routine send acknowledgements spend no inference.
 
 Completed tool results return directly to the waiting owner. They do not commission
-another Terra pass. A new message still receives recipient-side context, and an
-unread instruction takes precedence over handling an older tool result. Results
-that arrive during context preparation can join the same owner turn.
+another Terra pass. New assignments reach their owner immediately while Terra may
+prepare supplemental context. Unread instructions join available results in the
+next turn. Routine Terra notes are staged without buying an owner turn; useful
+additions can arrive later. Preparations accepted by older runners retain their
+recorded handoff semantics during recovery.
 
 Terra receives activity facts and retrievable original call records, and batches
 pending routine activity for one work scope. Required context and tool
@@ -39,6 +42,23 @@ evidence can be sent through `files` or `results`. Extraction failures accompany
 the message as limitations alongside the retained original. New profiles guide
 Astra toward one lead owner per coherent deliverable and early focused self-forks;
 this is planning guidance, not a hard-coded specialist topology.
+
+For substantial work, owner instructions call for `work/plan.md`: numbered tasks,
+dependencies, owners, status, expected evidence and stopping conditions. Launch
+all ready independent forks together, do useful lead work, and integrate their
+returns. Child forks can decompose their own bounded subwork. The plan is a plain
+editable file, with no validation or submission gate.
+
+Each identity and fork has private `work/` and `scratch/` directories. File tools
+accept `scratch/...` or `~/scratch/...`; shell commands use `$BLOOM_SCRATCH`.
+The host HOME is unchanged. New forks expose `memory/` as a read-only view of the
+owner's Markdown files; legacy branch directories are preserved, and their SDK
+memory reads resolve to the owner. Canonical attachment paths survive forks and
+monitoring. Older relative inbox references resolve only through existing read
+grants; ambiguous references require an absolute path.
+Existing frozen instructions and tool versions are preserved. Updated planning
+and parking guidance is seeded into fresh identities; old workspaces require a
+deliberate instruction/tool update before adopting that guidance.
 
 ```sh
 uv sync --group dev
@@ -108,6 +128,11 @@ and an opt-in live local HTML regression.
 
 Owners publish private L0/L1/L2 memory through exact native edits; only continuous
 Astra publishes shared memory. Helpers and self-forks cannot approve those writes.
+Memory is already a filesystem: `memory/L0.md`, `memory/L1.md`, `memory/L2/*.md`
+and `shared/memory/`. Immutable receipts preserve approved revisions; SQLite only
+indexes them. File reads see current accepted contents, while the model's permanent
+prefix stays pinned until a context boundary. Plans and scratch are ordinary
+working files, separate from durable memory and exact `history/` operations.
 Compaction is performed by the same owning model, preserves exact owner
 instructions and immutable native originals, and refreshes accepted memory only at that
 boundary. L2 remains a retrieval index instead of growing the permanent prefix.
@@ -126,7 +151,7 @@ after operator resume. Force requests remain explicit deliberate boundaries.
 Terra continuations retain their request identity even when unrelated activity
 arrives for the same owner.
 
-Current verification: 76 offline tests cover executable CLI exchange,
+Offline tests cover executable CLI exchange,
 exact fork seeds, cancellation, auth checks, sender preparation, superseding
 queued effects, crash recovery and explicit failed-request recovery. Live
 provider transport, native tools and sequential conversation reuse were verified
@@ -143,8 +168,10 @@ model receipts and zero compactions. This required operator recovery: an empty
 post-answer response blocked Astra, and 2m11s of AVGO's elapsed time belongs to
 that recovery. The earlier FRMI run also included about ten minutes of operator
 downtime. These runs demonstrate reduced model traffic, not a clean uninterrupted
-pass or an established latency improvement. Long reader/tool queues and shell-based
-polling remain. Background work was stopped after both answers; unstarted jobs
+pass or an established latency improvement. That recording predates the actor/wait
+changes, supplemental context and accepted empty turns; their live performance has
+not yet been measured. Per-source Luna reading remains a separate workstream.
+Background work was stopped after both answers; unstarted jobs
 remain retained without replay.
 
 A user-inbox answer does not terminate other agents' outstanding work. `run` may
@@ -158,10 +185,11 @@ rebuild the same result or change its frozen supporting-file revisions. Missing 
 edited derived result snapshots are restored from their immutable originals.
 
 Tool source can declare `INTERACTIVE = True` for short control or file operations.
-The scheduler reserves one of its four worker slots for these jobs and admits them
+The scheduler reserves one of its four local launch places for these jobs and admits them
 first, preserving FIFO order within each class. Bundled message, read/edit, cancel,
 fork and agent-creation tools use this declaration; search, extraction and shell
-work share the other three slots. This is scheduling metadata, not API authority
+work share the other three places while executing locally; remote waits release
+that budget. This is scheduling metadata, not API authority
 or a latency guarantee: message preparation can still await selected evidence.
 Existing frozen tool versions retain their original declarations.
 
