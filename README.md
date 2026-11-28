@@ -169,10 +169,29 @@ post-answer response blocked Astra, and 2m11s of AVGO's elapsed time belongs to
 that recovery. The earlier FRMI run also included about ten minutes of operator
 downtime. These runs demonstrate reduced model traffic, not a clean uninterrupted
 pass or an established latency improvement. That recording predates the actor/wait
-changes, supplemental context and accepted empty turns; their live performance has
-not yet been measured. Per-source Luna reading remains a separate workstream.
+changes, supplemental context and accepted empty turns. Per-source Luna reading
+remains a separate workstream.
 Background work was stopped after both answers; unstarted jobs
 remain retained without replay.
+
+A subsequent fresh FRMI-only run on `af64228` delivered an answer in **51m39s /
+160 requests**, then exited normally without operator recovery. All 160 model
+requests completed. Against the previous FRMI run, answer time increased 10.4%
+and calls increased 28%, despite first Sol work moving from 18m22s to 31s and the
+longest tool queue falling from 5m29s to 0.68s. Six model requests overlapped at
+peak, 23 empty turns parked successfully, and no sleeps or compactions occurred.
+This is one run per revision, with different research choices, not a general
+causal performance estimate.
+
+The lead wrote a plan but launched its two forks serially. The first catalyst
+report arrived at 35m52s, versus 42m48s previously, but the remaining handoff and
+review took 15m47s rather than 4m00s. Six source-file reads failed on permissions
+when recipients followed sender/fork paths; models then requested copied evidence
+and further preparation. Two model-requested search cancellations left one nested
+reader job explicitly uncertain; no effects were replayed. Luna ran 30 requests
+and was active during 36m51s (71% of the answer interval, overlapping other work).
+Remaining gaps include parent continuation after single-call fork creation,
+usable forwarded evidence references, and repeated curation of large source files.
 
 A user-inbox answer does not terminate other agents' outstanding work. `run` may
 therefore reach its allowance and exit with status 2 after delivering an answer;
