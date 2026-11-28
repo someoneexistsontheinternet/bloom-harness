@@ -185,9 +185,10 @@ causal performance estimate.
 
 The lead wrote a plan but launched its two forks serially. The first catalyst
 report arrived at 35m52s, versus 42m48s previously, but the remaining handoff and
-review took 15m47s rather than 4m00s. Six source-file reads failed on permissions
-when recipients followed sender/fork paths; models then requested copied evidence
-and further preparation. Two model-requested search cancellations left one nested
+review took 15m47s rather than 4m00s. Five source-file reads failed on permissions
+when recipients followed sender/fork paths, and one read targeted a missing
+attachment directory; models requested copied evidence and further preparation.
+Two model-requested search cancellations left one nested
 reader job explicitly uncertain; no effects were replayed. Luna ran 30 requests
 and was active during 36m51s (71% of the answer interval, overlapping other work).
 Remaining gaps include parent continuation after single-call fork creation,
