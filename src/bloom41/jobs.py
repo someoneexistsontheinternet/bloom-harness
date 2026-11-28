@@ -361,13 +361,14 @@ class Jobs:
             return job
         uncertain = self.unsettled_effects(job_id)
         reason = self.cancellation_reason(job) or "Cancellation requested"
+        awaiting_exit = not job.get("parent") and job_id in self.running
         return self.state(
             job_id,
-            "uncertain" if uncertain else "cancelled",
+            "cancelling" if awaiting_exit else "uncertain" if uncertain else "cancelled",
             cancellation_acknowledged=True,
             inherited_cancellation_ack=inherited,
             cancellation_reason=reason,
-            error="Worker stopped; accepted model/service work remains unsettled"
+            error="Cancellation acknowledged; accepted model/service work remains unsettled"
             if uncertain
             else reason,
             reason="Acknowledged cancellation; prior effects are retained, never replayed",

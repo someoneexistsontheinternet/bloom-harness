@@ -52,6 +52,46 @@ async def run(tool):
         loop.store.close()
 
 
+async def test_root_acknowledgement_waits_for_observed_process_exit(tmp_path):
+    loop = Loop(tmp_path, Scripted(), trusted_tools=sys.platform != "darwin")
+    tools(
+        loop,
+        '''import asyncio
+async def run(tool):
+    """Wait for cancellation without external effects."""
+    await asyncio.Event().wait()
+''',
+    )
+    release_exit = asyncio.Event()
+    finish_process = loop.jobs.finish_process
+
+    async def delayed_exit_receipt(job_id, process):
+        await release_exit.wait()
+        await finish_process(job_id, process)
+
+    loop.jobs.finish_process = delayed_exit_receipt
+    await loop.jobs.start()
+    cancel = None
+    try:
+        root = loop.jobs.submit(Actor("astra"), "nested", {})
+        await child_started(loop, root)
+        cancel = asyncio.create_task(loop.jobs.cancel(root["id"]))
+        async with asyncio.timeout(3):
+            while not loop.jobs.get(root["id"]).get("cancellation_acknowledged"):
+                await asyncio.sleep(0.01)
+        assert loop.jobs.get(root["id"])["status"] == "cancelling"
+        assert not cancel.done()
+        release_exit.set()
+        assert (await cancel)["status"] == "cancelled"
+        assert loop.jobs.get(root["id"])["exit_code"] is not None
+    finally:
+        release_exit.set()
+        if cancel:
+            await cancel
+        await loop.jobs.close()
+        loop.store.close()
+
+
 @pytest.mark.parametrize("settles", [True, False])
 async def test_cancelled_reader_preserves_pending_purchase_then_reconciles_after_receipt(
     tmp_path, settles

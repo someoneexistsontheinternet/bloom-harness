@@ -213,6 +213,26 @@ That recording predates the current fork continuation, published evidence
 references and explicit per-source reader changes; it does not measure their
 effect on end-to-end latency.
 
+A bounded planning check on `a4b502d` replayed the recorded Astra setup and exact
+FRMI assignment into a fresh workspace, then used `gpt-6.2-sol` at xhigh effort.
+The lead wrote its plan and requested price/catalyst forks in the same response;
+both branches existed by 14.7 seconds. The lead continued while they ran, and the
+price fork created a narrower child at 30.7 seconds. Eight real requests completed
+in 43.9 seconds. Ten search and three shell requests were held before execution;
+no Astra/Terra inference, research results or final answer were manufactured.
+This validates planning and fork continuation, not full research quality or speed.
+There was no matched 6.1 control, and the maintained Sol default remains 6.1.
+The setup driver needed a bookkeeping fix before any Sol purchase; existing setup
+effects were reused. The 43.9-second trial interval excludes that 66.6-second pause.
+
+A separate retained 22 KB presentation took one Luna/medium request: 9.0 seconds
+through extraction, four exact validated excerpts, and summaries covering all
+omitted ranges. One redundant summary was rejected without losing coverage. The
+same extraction in a second job took 0.17 seconds with no additional model
+purchase. This text-only source check does not establish whole-search latency;
+native-image projection and independent multi-source/window execution are covered
+by the offline fixtures. Both live checks used the committed reader implementation.
+
 A user-inbox answer does not terminate other agents' outstanding work. `run` may
 therefore reach its allowance and exit with status 2 after delivering an answer;
 inspect the inbox and run status separately. Unstarted budget-blocked work remains
