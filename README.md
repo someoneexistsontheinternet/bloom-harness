@@ -133,6 +133,18 @@ one owner (including its forks) reuse their original receipt; independent source
 remain concurrent. An uncertain accepted purchase is never automatically repeated.
 Search results and message forwarding do not commission another generic reader.
 
+`scripts/evaluate_reader_effort.py` runs controlled reader-effort experiments from
+a local protocol: identical complete source text, question, native images and
+reader instructions at medium/high/xhigh/max. `prepare` freezes the protocol and
+request bodies without inference. `run` makes the explicitly enumerated fresh
+purchases, including independent repetitions; it bypasses result memoization for
+those samples while preserving durable purchase IDs and uncertain receipts.
+Four requests form each evaluation wave. This experiment budget does not change
+runtime concurrency or the maintained reader default. Outputs for source-based
+grading omit effort/timing labels; `metrics` exports timing and token usage after
+grading. Private captures, protocols, responses and grades belong under local
+logs/artifacts and are not packaged or committed.
+
 ```sh
 .venv/bin/bloom41 --root YOUR_WORKSPACE browser prepare
 .venv/bin/bloom41 --root YOUR_WORKSPACE browser setup
@@ -227,7 +239,7 @@ effects were reused. The 43.9-second trial interval excludes that 66.6-second pa
 
 A separate retained 22 KB presentation took one Luna/medium request: 9.0 seconds
 through extraction, four exact validated excerpts, and summaries covering all
-omitted ranges. One redundant summary was rejected without losing coverage. The
+omitted ranges. One invalid summary range was rejected without losing coverage. The
 same extraction in a second job took 0.17 seconds with no additional model
 purchase. This text-only source check does not establish whole-search latency;
 native-image projection and independent multi-source/window execution are covered
